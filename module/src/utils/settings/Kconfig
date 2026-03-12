@@ -1,0 +1,13 @@
+menuconfig ZLIBS_UTILS_SETTINGS
+    bool "Settings"
+    default n
+    select FLASH
+    select FLASH_MAP
+    select SETTINGS
+    select ZMS
+    help
+      Enable the zlibs wrapper around the Zephyr settings subsystem.
+
+      The library loads a typed settings subtree and persists updates through
+      Zephyr settings backends. The Kconfig integration in this module assumes
+      the ZMS-backed settings storage.

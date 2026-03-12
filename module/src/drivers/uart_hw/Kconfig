@@ -1,0 +1,12 @@
+menuconfig ZLIBS_DRIVERS_UART_HW
+    bool "UART hardware wrapper"
+    default n
+    select SERIAL
+    select RING_BUFFER
+    select UART_USE_RUNTIME_CONFIGURE
+    select UART_INTERRUPT_DRIVEN if !ZLIBS_TESTING
+    help
+      Enable the hardware-backed UART implementation in zlibs.
+
+      This wrapper configures a Zephyr UART device, uses ring buffers for
+      transmit and receive data, and uses interrupt-driven UART.

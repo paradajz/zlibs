@@ -1,0 +1,23 @@
+menuconfig ZLIBS_UTILS_EMUEEPROM
+    bool "Emulated EEPROM"
+    default n
+    help
+      Enable the flash-backed emulated EEPROM helper based on STM32
+      application note AN3969.
+
+      The module stores 16-bit values in two rotating flash pages and keeps a
+      RAM mirror for fast reads and page transfers.
+
+if ZLIBS_UTILS_EMUEEPROM
+
+config ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE
+    int "Flash page size (bytes)"
+    default 4096
+    help
+      Size, in bytes, of one flash page exposed by the emulated EEPROM HWA.
+
+      Set this to match the erase-page size of the underlying flash region.
+      Each page stores one 32-bit header word followed by 32-bit
+      address/value entries.
+
+endif

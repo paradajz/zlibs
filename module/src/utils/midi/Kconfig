@@ -1,0 +1,40 @@
+menuconfig ZLIBS_UTILS_MIDI
+    bool "MIDI library"
+    default n
+    help
+      Enable the transport-agnostic MIDI parser/transmitter library.
+
+      The module supports serial, BLE, and USB MIDI transport backends and
+      provides message parsing, generation, and MIDI-thru routing helpers.
+
+if ZLIBS_UTILS_MIDI
+
+config ZLIBS_UTILS_MIDI_SYSEX_ARRAY_SIZE
+    int "Max size of SysEx array in bytes"
+    default 128
+    help
+      Maximum SysEx payload buffer size, in bytes, used by the parser.
+
+      Increase this for longer incoming or outgoing SysEx messages. Larger
+      values also increase memory usage per MIDI instance.
+
+config ZLIBS_UTILS_MIDI_MAX_THRU_INTERFACES
+    int "Maximum number of MIDI thru interfaces"
+    default 5
+    help
+      Maximum number of interfaces that can be registered for MIDI-thru.
+
+      Increase this if one MIDI input must forward traffic to more outputs.
+      Higher values reserve additional memory for interface bookkeeping.
+
+config ZLIBS_UTILS_MIDI_BLE_MAX_PACKET_SIZE
+    int "Maximum number of bytes in BLE MIDI packet"
+    default 64
+    help
+      Maximum encoded BLE-MIDI packet size, in bytes.
+
+      Set this to the largest BLE packet your transport can produce or accept.
+      Larger values improve headroom for bursts but increase temporary buffer
+      usage.
+
+endif
