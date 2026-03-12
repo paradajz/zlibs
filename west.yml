@@ -1,0 +1,7 @@
+# List all the required west modules for the application here.
+# Zephyr is already included through $ZEPHYR_WS/zenv/west.yml
+# file, but can be overridden here.
+
+manifest:
+  self:
+    import: zephyr/west
