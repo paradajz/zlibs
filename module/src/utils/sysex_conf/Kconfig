@@ -1,0 +1,8 @@
+menuconfig ZLIBS_UTILS_SYSEX_CONF
+    bool "SysEx configuration library"
+    default n
+    help
+      Enable the SysEx-based configuration protocol library.
+
+      The library supports GET/SET/BACKUP requests over a compile-time layout
+      and optional custom requests handled by application callbacks.

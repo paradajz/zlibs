@@ -1,0 +1,8 @@
+menuconfig ZLIBS_DRIVERS_USB_MOCK
+    bool "USB mock"
+    default n
+    help
+      Enable the GoogleMock-based USB implementation used by tests.
+
+      This provides a mocked USB implementation as a drop-in replacement
+      for the hardware USB wrapper when no real device is involved.

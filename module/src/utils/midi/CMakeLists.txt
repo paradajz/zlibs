@@ -1,0 +1,6 @@
+zephyr_library_named(zlibs-utils-midi)
+
+zephyr_library_sources_ifdef(CONFIG_ZLIBS_UTILS_MIDI_TRANSPORT_BLE transport/transport_ble.cpp)
+zephyr_library_sources_ifdef(CONFIG_ZLIBS_UTILS_MIDI_TRANSPORT_SERIAL transport/transport_serial.cpp)
+zephyr_library_sources_ifdef(CONFIG_ZLIBS_UTILS_MIDI_TRANSPORT_USB transport/transport_usb.cpp)
+zephyr_library_sources(midi.cpp)

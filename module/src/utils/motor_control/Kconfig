@@ -1,0 +1,9 @@
+menuconfig ZLIBS_UTILS_MOTOR_CONTROL
+    bool "Motor control"
+    default n
+    help
+      Enable the zlibs motor-control library.
+
+      This library coordinates one or more motors and schedules timer-driven
+      movement updates. It also uses the shared internal workqueue for
+      deferred cleanup outside interrupt context.

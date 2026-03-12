@@ -1,0 +1,9 @@
+menuconfig ZLIBS_UTILS_LESSDB
+    bool "LessDb"
+    default n
+    select ZLIBS_UTILS_MISC
+    help
+      Enable the lightweight embedded parameter database library.
+
+      LessDb stores values using block/section/parameter indexing over a
+      user-provided storage backend.
