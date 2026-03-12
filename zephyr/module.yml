@@ -1,0 +1,4 @@
+name: zlibs
+build:
+  cmake: module
+  kconfig: module/Kconfig

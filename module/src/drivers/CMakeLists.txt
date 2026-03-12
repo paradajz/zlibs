@@ -1,0 +1,2 @@
+add_subdirectory_ifdef(CONFIG_ZLIBS_DRIVERS_UART_HW uart_hw)
+add_subdirectory_ifdef(CONFIG_ZLIBS_DRIVERS_UART_MOCK uart_mock)

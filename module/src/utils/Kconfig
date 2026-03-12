@@ -1,0 +1,7 @@
+rsource "filters/Kconfig"
+rsource "misc/Kconfig"
+rsource "motor_control/Kconfig"
+rsource "settings/Kconfig"
+rsource "signaling/Kconfig"
+rsource "state_machine/Kconfig"
+rsource "threads/Kconfig"

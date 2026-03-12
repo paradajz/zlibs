@@ -1,0 +1,8 @@
+menuconfig ZLIBS_UTILS_MISC
+    bool "Misc utilities"
+    default n
+    help
+      Enable various general-purpose utilities.
+
+      This includes helpers such as ring buffers, numeric utilities, string
+      helpers, mutex wrappers, and supporting templates used across zlibs.

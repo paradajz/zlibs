@@ -1,0 +1,7 @@
+add_subdirectory_ifdef(CONFIG_ZLIBS_UTILS_FILTERS filters)
+add_subdirectory_ifdef(CONFIG_ZLIBS_UTILS_MISC misc)
+add_subdirectory_ifdef(CONFIG_ZLIBS_UTILS_MOTOR_CONTROL motor_control)
+add_subdirectory_ifdef(CONFIG_ZLIBS_UTILS_SETTINGS settings)
+add_subdirectory_ifdef(CONFIG_ZLIBS_UTILS_SIGNALING signaling)
+add_subdirectory_ifdef(CONFIG_ZLIBS_UTILS_STATE_MACHINE state_machine)
+add_subdirectory_ifdef(CONFIG_ZLIBS_UTILS_THREADS threads)

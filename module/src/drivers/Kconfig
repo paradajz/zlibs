@@ -1,0 +1,2 @@
+rsource "uart_hw/Kconfig"
+rsource "uart_mock/Kconfig"

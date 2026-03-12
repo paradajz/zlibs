@@ -1,0 +1,8 @@
+menuconfig ZLIBS_UTILS_STATE_MACHINE
+    bool "State machine"
+    default n
+    help
+      Enable the typed finite state-machine.
+
+      This library provides compile-time checked state storage, event
+      dispatch, and init/error-state handling.

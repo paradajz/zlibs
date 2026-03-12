@@ -1,0 +1,10 @@
+---
+presets:
+  -
+    name: "app"
+    board: "nucleo_f767zi"
+    cmake-file: "app.cmake"
+    conf-files:
+      common:
+        - "app.conf"
+    flash-runner: "openocd"

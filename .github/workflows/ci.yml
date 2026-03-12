@@ -1,0 +1,70 @@
+name: CI
+
+on: [push]
+
+jobs:
+  build_and_test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ccache
+          key: ccache-
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup missing directories and files on the runner
+        run: |
+          touch ~/.gitconfig
+      - name: Prepare container
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: zenv # Local name only
+          imageTag: latest # Local tag only
+          push: never
+          env: |
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          runCmd: |
+            git config --global credential.helper store
+            echo "https://x-access-token:$GITHUB_TOKEN@github.com" >> ~/.git-credentials
+            git config --global user.email ${{ github.event.pusher.email }}
+            git config --global user.name ${{ github.actor }}
+      - name: Code formatting
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: zenv
+          imageTag: latest
+          push: never
+          runCmd: |
+            make format
+      - name: Build
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: zenv
+          imageTag: latest
+          push: never
+          runCmd: |
+            make CHECK=1
+      - name: Test
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: zenv
+          imageTag: latest
+          push: never
+          runCmd: |
+            make tests RUN=1
+      - name: Save ccache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ccache
+          key: "ccache-${{ github.run_id }}"

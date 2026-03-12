@@ -1,0 +1,35 @@
+{
+    "tasks": [
+        {
+            "label": "[Build] app",
+            "command": "make DEBUG=1",
+            "type": "shell",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+        },
+        {
+            "label": "[Tests] Build",
+            "command": "make tests TEST=${input:test} && cp $(find build/tests/native_sim_native_64 -type f -wholename \"*${input:test}.test/zephyr/zephyr.exe\" -print0) ${workspaceFolder}/build/tests/test_vscode.exe",
+            "type": "shell",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "test",
+            "type": "pickString",
+            "default": "misc",
+            "description": "Select test:",
+            "options": [
+                "misc",
+            ]
+        },
+    ]
+}

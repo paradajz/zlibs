@@ -1,0 +1,45 @@
+{
+    "configurations": [
+        {
+            "name": "Test",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/tests/test_vscode.exe",
+            "args": [],
+            "stopAtEntry": true,
+            "environment": [],
+            "externalConsole": false,
+            "cwd": "${workspaceFolder}",
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "[Tests] Build"
+        },
+        {
+            "name": "Launch/app",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "configFiles": [
+                "${env:ZEPHYR_BASE}/boards/st/nucleo_f767zi/support/openocd.cfg"
+            ],
+            "cwd": "${workspaceRoot}",
+            "executable": "${workspaceFolder}/build/app/default/debug/app/zephyr/zephyr.hex",
+            "interface": "swd",
+            "device": "stm32f767zi",
+            "runToEntryPoint": "main",
+            "preLaunchTask": "[Build] app",
+            "gdbPath": "${env:ZEPHYR_SDK_INSTALL_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "preLaunchCommands": [
+                "add-symbol-file ${workspaceFolder}/build/app/default/debug/app/zephyr/zephyr.elf",
+            ],
+            "showDevDebugOutput": "both",
+            "serverpath": "${env:ZEPHYR_SDK_INSTALL_DIR}/sysroots/x86_64-pokysdk-linux/usr/bin/openocd"
+        },
+    ]
+}

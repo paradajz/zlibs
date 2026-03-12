@@ -1,0 +1,8 @@
+menuconfig ZLIBS_UTILS_FILTERS
+    bool "Filters"
+    default n
+    help
+      Enable the zlibs filter library.
+
+      The library provides EMA, median, analog-filter, and debounce helpers.
+      Debounce scheduling uses the shared internal zlibs workqueue.
