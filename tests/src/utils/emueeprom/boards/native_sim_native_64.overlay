@@ -1,0 +1,41 @@
+/*
+ * Copyright (c) 2026 Igor Petrovic
+ * SPDX-License-Identifier: MIT
+ */
+
+/{
+    chosen {
+        zephyr,code-partition = &page1_partition;
+    };
+};
+
+&flashcontroller0 {
+    reg = <0x00000000 DT_SIZE_K(16)>;
+};
+
+&flash0 {
+    reg = <0x00000000 DT_SIZE_K(16)>;
+
+    /delete-node/ partitions;
+
+    partitions {
+        compatible = "fixed-partitions";
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        page1_partition: partition@0 {
+            label = "emueeprom-page1";
+            reg = <0x00000000 0x00001000>;
+        };
+
+        page2_partition: partition@1000 {
+            label = "emueeprom-page2";
+            reg = <0x00001000 0x00001000>;
+        };
+
+        factory_partition: partition@2000 {
+            label = "emueeprom-factory";
+            reg = <0x00002000 0x00001000>;
+        };
+    };
+};

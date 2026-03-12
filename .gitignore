@@ -1,0 +1,8 @@
+**/.cache*/
+**/build/*
+**/ccache/*
+**/compile_commands.json
+*.cortex-debug*
+*.zip
+*fp-info-cache
+.west-updated

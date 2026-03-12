@@ -1,0 +1,36 @@
+menu "zlibs"
+
+menuconfig ZLIBS_TESTING
+    bool "Testing mode"
+    default n
+    help
+      Enable zlibs test-only behavior.
+
+      This is used by unit tests reliant on hardware functionality not
+      normally available on native_sim board. Should not be used in
+      the application.
+
+config ZLIBS_INTERNAL_WORKQUEUE_PRIORITY
+    int "Internal workqueue priority"
+    default 0
+    help
+      Zephyr priority used by the shared zlibs workqueue thread.
+
+      Lower numeric values correspond to higher priority in Zephyr.
+
+config ZLIBS_INTERNAL_WORKQUEUE_STACK_SIZE
+    int "Internal workqueue stack size"
+    default 1024
+    help
+      Stack size, in bytes, for the shared zlibs workqueue thread.
+
+      Increase this if work items scheduled by zlibs utilities require more
+      stack space.
+
+rsource "src/Kconfig"
+
+module = ZLIBS
+module-str = zlibs
+source "subsys/logging/Kconfig.template.log_config"
+
+endmenu

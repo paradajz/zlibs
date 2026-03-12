@@ -1,0 +1,9 @@
+menuconfig ZLIBS_UTILS_THREADS
+    bool "Threads"
+    default n
+    select THREADS
+    help
+      Enable zlibs wrappers around Zephyr threads and workqueues.
+
+      This library provides the UserThread and WorkqueueThread templates used
+      by other zlibs libraries.

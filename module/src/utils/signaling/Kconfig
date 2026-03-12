@@ -1,0 +1,48 @@
+menuconfig ZLIBS_UTILS_SIGNALING
+    bool "Signaling"
+    select ZLIBS_UTILS_THREADS
+    default n
+    help
+      Enable the asynchronous in-process publish/subscribe library.
+
+      The signaling dispatcher runs callbacks from a dedicated thread and
+      stores queued signals in a fixed-size memory slab.
+
+if ZLIBS_UTILS_SIGNALING
+
+config ZLIBS_UTILS_SIGNALING_MAX_PAYLOAD_LENGTH_BYTES
+    int "Maximum signal payload size (bytes)"
+    default 32
+    help
+      Maximum size, in bytes, of one published signal object stored in the
+      dispatcher queue.
+
+      Increase this if a signal type triggers the compile-time payload-size
+      assertion.
+
+config ZLIBS_UTILS_SIGNALING_MAX_POOL_SIZE
+    int "Dispatch queue depth"
+    default 32
+    help
+      Number of dispatch nodes preallocated for queued signals.
+
+      This limits how many published signals can be pending at once and also
+      determines the slab memory reserved by the dispatcher.
+
+config ZLIBS_UTILS_SIGNALING_THREAD_PRIORITY
+    int "Dispatcher thread priority"
+    default 5
+    help
+      Zephyr priority used by the dedicated signaling dispatcher thread.
+
+      Lower numeric values correspond to higher priority.
+
+config ZLIBS_UTILS_SIGNALING_THREAD_STACK_SIZE
+    int "Dispatcher thread stack size"
+    default 2048
+    help
+      Stack size, in bytes, for the dedicated signaling dispatcher thread.
+
+      Increase this if subscriber callbacks need more stack.
+
+endif

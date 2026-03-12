@@ -1,0 +1,56 @@
+menuconfig ZLIBS_DRIVERS_USB_HW
+    bool "USB hardware wrapper"
+    default n
+    select USB_DEVICE_STACK_NEXT
+    help
+      Enable the hardware-backed USB implementation in zlibs.
+
+      This wrapper configures the Zephyr USB device stack and exposes
+      the common USB functionality through the zlibs USB driver API.
+
+menu "USB wrapper options"
+    depends on ZLIBS_DRIVERS_USB_HW
+
+config ZLIBS_DRIVERS_USB_MANUFACTURER
+    string "USB device manufacturer string"
+    default "Zephyr Project"
+    help
+      USB device manufacturer string.
+
+config ZLIBS_DRIVERS_USB_PRODUCT
+    string "USB device product string"
+    default "USB sample"
+    help
+      USB device product string.
+
+config ZLIBS_DRIVERS_USB_VID
+    hex "USB device Vendor ID"
+    default 0x2fe3
+    help
+      USB device Vendor ID.
+
+config ZLIBS_DRIVERS_USB_PID
+    hex "USB device Product ID"
+    default 0x0001
+    help
+      USB device Product ID.
+
+config ZLIBS_DRIVERS_USB_SELF_POWERED
+    bool "USB device Self-powered attribute"
+    default y
+    help
+      Set the Self-powered attribute in the USB configuration.
+
+config ZLIBS_DRIVERS_USB_REMOTE_WAKEUP
+    bool "USB device Remote Wakeup attribute"
+    help
+      Set the Remote Wakeup attribute in the USB configuration.
+
+config ZLIBS_DRIVERS_USB_MAX_POWER
+    int "USB device bMaxPower value"
+    default 125
+    range 0 250
+    help
+      bMaxPower value in the USB configuration in 2 mA units.
+
+endmenu
