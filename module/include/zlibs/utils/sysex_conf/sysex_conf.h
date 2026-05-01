@@ -74,6 +74,11 @@ namespace zlibs::utils::sysex_conf
         bool is_configuration_enabled();
 
         /**
+         * @brief Forces the configuration session closed without sending a response.
+         */
+        void close_connection();
+
+        /**
          * @brief Enables or disables user-error ignore mode.
          *
          * @param state New ignore-mode state.

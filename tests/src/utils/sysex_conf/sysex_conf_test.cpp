@@ -1145,6 +1145,24 @@ TEST_F(SysExConfTest, Init)
     verify_response(conn_close, Status::Ack);
 }
 
+TEST_F(SysExConfTest, CloseConnection)
+{
+    open_conn();
+
+    ASSERT_TRUE(sys_ex_conf.is_configuration_enabled());
+
+    data_handler.reset();
+    sys_ex_conf.close_connection();
+
+    ASSERT_FALSE(sys_ex_conf.is_configuration_enabled());
+    ASSERT_EQ(0, data_handler.response_counter());
+
+    handle_packet(get_special_req_bytes_per_val);
+
+    verify_response(get_special_req_bytes_per_val, Status::ErrorConnection);
+    ASSERT_EQ(1, data_handler.response_counter());
+}
+
 TEST_F(SysExConfTest, UmpCompleteSysExMessage)
 {
     handle_packet(conn_open);

@@ -58,6 +58,11 @@ bool SysExConf::is_configuration_enabled()
     return _configuration_enabled;
 }
 
+void SysExConf::close_connection()
+{
+    _configuration_enabled = false;
+}
+
 void SysExConf::set_user_error_ignore_mode(bool state)
 {
     _user_error_ignore_mode_enabled = state;
