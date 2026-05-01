@@ -14,6 +14,8 @@
 #include <zephyr/drivers/flash.h>
 #include <zephyr/storage/flash_map.h>
 
+#include <span>
+
 using namespace zlibs::utils::lessdb;
 
 namespace
@@ -46,9 +48,10 @@ namespace
     class EmuEepromFlashPageHwa : public zlibs::utils::emueeprom::Hwa
     {
         public:
-        static constexpr size_t PAGE_1_SIZE  = EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t PAGE_2_SIZE  = EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t FACTORY_SIZE = EMUEEPROM_PAGE_SIZE;
+        static constexpr size_t PAGE_1_SIZE      = EMUEEPROM_PAGE_SIZE;
+        static constexpr size_t PAGE_2_SIZE      = EMUEEPROM_PAGE_SIZE;
+        static constexpr size_t FACTORY_SIZE     = EMUEEPROM_PAGE_SIZE;
+        static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
 
         bool init() override
         {
@@ -61,35 +64,32 @@ namespace
             return flash_erase(partition.dev, partition.offset, partition.size) == 0;
         }
 
-        bool write_32(Page page, uint32_t offset, uint32_t data) override
+        bool write(Page page, uint32_t offset, std::span<const uint8_t> data) override
         {
             const auto& partition = partition_for(page);
 
-            if ((offset + sizeof(data)) > partition.size)
+            if ((data.size() != WRITE_BLOCK_SIZE) ||
+                ((offset % WRITE_BLOCK_SIZE) != 0) ||
+                ((offset + data.size()) > partition.size))
             {
                 return false;
             }
 
-            return flash_write(partition.dev, partition.offset + offset, &data, sizeof(data)) == 0;
+            return flash_write(partition.dev, partition.offset + offset, data.data(), data.size()) == 0;
         }
 
-        std::optional<uint32_t> read_32(Page page, uint32_t offset) override
+        bool read(Page page, uint32_t offset, std::span<uint8_t> data) override
         {
             const auto& partition = partition_for(page);
 
-            if ((offset + sizeof(uint32_t)) > partition.size)
+            if ((data.size() != WRITE_BLOCK_SIZE) ||
+                ((offset % WRITE_BLOCK_SIZE) != 0) ||
+                ((offset + data.size()) > partition.size))
             {
-                return {};
+                return false;
             }
 
-            uint32_t data = 0;
-
-            if (flash_read(partition.dev, partition.offset + offset, &data, sizeof(data)) != 0)
-            {
-                return {};
-            }
-
-            return data;
+            return flash_read(partition.dev, partition.offset + offset, data.data(), data.size()) == 0;
         }
 
         private:
@@ -110,15 +110,15 @@ namespace
             return _page1;
         }
 
-        static inline const Partition _page1   = make_partition(FIXED_PARTITION_DEVICE(page1_partition),
-                                                                FIXED_PARTITION_OFFSET(page1_partition),
-                                                                FIXED_PARTITION_SIZE(page1_partition));
-        static inline const Partition _page2   = make_partition(FIXED_PARTITION_DEVICE(page2_partition),
-                                                                FIXED_PARTITION_OFFSET(page2_partition),
-                                                                FIXED_PARTITION_SIZE(page2_partition));
-        static inline const Partition _factory = make_partition(FIXED_PARTITION_DEVICE(factory_partition),
-                                                                FIXED_PARTITION_OFFSET(factory_partition),
-                                                                FIXED_PARTITION_SIZE(factory_partition));
+        static inline const Partition _page1   = make_partition(PARTITION_DEVICE(page1_partition),
+                                                                PARTITION_OFFSET(page1_partition),
+                                                                PARTITION_SIZE(page1_partition));
+        static inline const Partition _page2   = make_partition(PARTITION_DEVICE(page2_partition),
+                                                                PARTITION_OFFSET(page2_partition),
+                                                                PARTITION_SIZE(page2_partition));
+        static inline const Partition _factory = make_partition(PARTITION_DEVICE(factory_partition),
+                                                                PARTITION_OFFSET(factory_partition),
+                                                                PARTITION_SIZE(factory_partition));
     };
 
     static std::optional<uint8_t> emueeprom_read_byte(EmuEeprom& emu_eeprom, uint32_t address)
@@ -135,7 +135,7 @@ namespace
 
     static bool emueeprom_write_byte(EmuEeprom& emu_eeprom, uint32_t address, uint8_t value)
     {
-        return emu_eeprom.write(address, value) == WriteStatus::Ok;
+        return emu_eeprom.write(make_entry(static_cast<uint16_t>(address), value)) == WriteStatus::Ok;
     }
 
     struct LessDbTestLayout
@@ -608,9 +608,9 @@ namespace
 
             void assert_test_requirements() const
             {
-                ASSERT_GE(FIXED_PARTITION_SIZE(page1_partition), EMUEEPROM_PAGE_SIZE);
-                ASSERT_GE(FIXED_PARTITION_SIZE(page2_partition), EMUEEPROM_PAGE_SIZE);
-                ASSERT_GE(FIXED_PARTITION_SIZE(factory_partition), EMUEEPROM_PAGE_SIZE);
+                ASSERT_GE(PARTITION_SIZE(page1_partition), EMUEEPROM_PAGE_SIZE);
+                ASSERT_GE(PARTITION_SIZE(page2_partition), EMUEEPROM_PAGE_SIZE);
+                ASSERT_GE(PARTITION_SIZE(factory_partition), EMUEEPROM_PAGE_SIZE);
             }
 
             bool init() override

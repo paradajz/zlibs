@@ -21,7 +21,7 @@ config ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE
       partition when available.
 
       Set this to match the erase-page size of the underlying flash region.
-      Each page stores one 32-bit header word followed by 32-bit
-      address/value entries.
+      Each page stores serialized address/value entries. Page status is encoded
+      as internal entries using a reserved address.
 
 endif

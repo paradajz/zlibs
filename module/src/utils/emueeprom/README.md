@@ -11,7 +11,7 @@ Public headers for this module are available in [`module/include/zlibs/utils/emu
 ### Configuration symbols
 
 - `CONFIG_ZLIBS_UTILS_EMUEEPROM`: enables the emulated EEPROM module.
-- `CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE`: sets the flash page size, in bytes, exposed through the `Hwa` interface.
+- `CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE`: sets the emulation page size, in bytes, exposed through the `Hwa` interface.
 
 ### Automatically selected symbols
 
@@ -23,7 +23,13 @@ This module does not automatically select additional Kconfig symbols.
 
 ## Notes
 
-- One 32-bit flash word stores one `(address, value)` pair, so the usable logical address count per page is `(page_size / 4) - 1`.
+- `Entry` stores one logical `(address, value)` pair. The current entry type uses 16-bit addresses and 16-bit values.
+- Entries are serialized into byte spans before they are written to the backend. The serialized format stores the value first, then the address.
+- Logical address `0xFFFF` is reserved for internal page-status records and cannot be used for user data.
+- Backends expose their native flash write granularity with `WRITE_BLOCK_SIZE`. When it is larger than one serialized entry, multiple entries are packed into one backend write block.
+- `flush()` makes all pending state durable: RAM-only cached writes and any partially filled backend write block.
+- There is no dedicated page header block. Page status records use the reserved status address and are appended through the same entry log; after `format()`, the first entries written are the runtime page status records.
+- A few backend write blocks are kept out of the public logical address range so internal page-status records and page transfers have room to complete.
 - The RAM mirror grows with the configured page size, so larger flash pages also increase RAM usage.
 - `format()` initializes runtime pages only by default.
 - `format(true)` also erases the factory page.
@@ -50,11 +56,18 @@ target_link_libraries(app PRIVATE zlibs-utils-emueeprom)
 ```cpp
 #include "zlibs/utils/emueeprom/emueeprom.h"
 
+#include <span>
+
 using namespace zlibs::utils::emueeprom;
 
 class MyHwa : public Hwa
 {
     public:
+    static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
+    static constexpr size_t PAGE_1_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+    static constexpr size_t PAGE_2_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+    static constexpr size_t FACTORY_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+
     bool init() override
     {
         return true;
@@ -65,17 +78,18 @@ class MyHwa : public Hwa
         return true;
     }
 
-    bool write_32([[maybe_unused]] Page page,
-                  [[maybe_unused]] uint32_t address,
-                  [[maybe_unused]] uint32_t data) override
+    bool write([[maybe_unused]] Page page,
+               [[maybe_unused]] uint32_t offset,
+               [[maybe_unused]] std::span<const uint8_t> data) override
     {
         return true;
     }
 
-    std::optional<uint32_t> read_32([[maybe_unused]] Page page,
-                                    [[maybe_unused]] uint32_t address) override
+    bool read([[maybe_unused]] Page page,
+              [[maybe_unused]] uint32_t offset,
+              [[maybe_unused]] std::span<uint8_t> data) override
     {
-        return 0xFFFFFFFFu;
+        return true;
     }
 };
 
@@ -83,7 +97,7 @@ MyHwa hwa;
 EmuEeprom eeprom(hwa);
 
 eeprom.init();
-eeprom.write(0, 0x1234);
+eeprom.write(make_entry(0, 0x1234));
 
 uint16_t value = 0;
 

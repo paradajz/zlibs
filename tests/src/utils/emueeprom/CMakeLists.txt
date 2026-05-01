@@ -16,7 +16,7 @@ set(CMAKE_REQUIRED_FLAGS "-std=gnu++20")
 
 check_cxx_source_compiles("
     #define CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE 128
-    #include <optional>
+    #include <span>
     #include <zlibs/utils/emueeprom/emueeprom.h>
 
     using namespace zlibs::utils::emueeprom;
@@ -24,22 +24,22 @@ check_cxx_source_compiles("
     class MatchingHwa : public Hwa
     {
         public:
+        static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
         static constexpr size_t PAGE_1_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
         static constexpr size_t PAGE_2_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
         static constexpr size_t FACTORY_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
 
         bool init() override { return true; }
         bool erase_page(Page) override { return true; }
-        bool write_32(Page, uint32_t, uint32_t) override { return true; }
-        std::optional<uint32_t> read_32(Page, uint32_t) override { return 0u; }
+        bool write(Page, uint32_t, std::span<const uint8_t>) override { return true; }
+        bool read(Page, uint32_t, std::span<uint8_t>) override { return true; }
     };
-
-    static_assert(EmuEeprom::max_address() == ((CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE / sizeof(uint32_t)) - 1));
 
     int main()
     {
         MatchingHwa hwa;
-        [[maybe_unused]] EmuEeprom emu_eeprom(hwa);
+        EmuEeprom emu_eeprom(hwa);
+        static_cast<void>(emu_eeprom.max_address());
         return 0;
     }
 " EMUEEPROM_MATCHING_BACKEND_COMPILES)
@@ -50,7 +50,7 @@ endif()
 
 check_cxx_source_compiles("
     #define CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE 128
-    #include <optional>
+    #include <span>
     #include <zlibs/utils/emueeprom/emueeprom.h>
 
     using namespace zlibs::utils::emueeprom;
@@ -60,8 +60,8 @@ check_cxx_source_compiles("
         public:
         bool init() override { return true; }
         bool erase_page(Page) override { return true; }
-        bool write_32(Page, uint32_t, uint32_t) override { return true; }
-        std::optional<uint32_t> read_32(Page, uint32_t) override { return 0u; }
+        bool write(Page, uint32_t, std::span<const uint8_t>) override { return true; }
+        bool read(Page, uint32_t, std::span<uint8_t>) override { return true; }
     };
 
     int main()
@@ -78,7 +78,7 @@ endif()
 
 check_cxx_source_compiles("
     #define CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE 128
-    #include <optional>
+    #include <span>
     #include <zlibs/utils/emueeprom/emueeprom.h>
 
     using namespace zlibs::utils::emueeprom;
@@ -86,14 +86,15 @@ check_cxx_source_compiles("
     class MismatchedHwa : public Hwa
     {
         public:
+        static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
         static constexpr size_t PAGE_1_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
         static constexpr size_t PAGE_2_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE + 4;
         static constexpr size_t FACTORY_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
 
         bool init() override { return true; }
         bool erase_page(Page) override { return true; }
-        bool write_32(Page, uint32_t, uint32_t) override { return true; }
-        std::optional<uint32_t> read_32(Page, uint32_t) override { return 0u; }
+        bool write(Page, uint32_t, std::span<const uint8_t>) override { return true; }
+        bool read(Page, uint32_t, std::span<uint8_t>) override { return true; }
     };
 
     int main()

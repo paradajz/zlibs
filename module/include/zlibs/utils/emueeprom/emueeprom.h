@@ -12,6 +12,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <span>
+#include <type_traits>
 
 namespace zlibs::utils::emueeprom
 {
@@ -40,11 +42,15 @@ namespace zlibs::utils::emueeprom
             requires std::derived_from<ConcreteHwa, Hwa>
         explicit EmuEeprom(ConcreteHwa& hwa)
             : _hwa(hwa)
+            , _write_block_size(ConcreteHwa::WRITE_BLOCK_SIZE)
+            , _max_address(static_cast<uint16_t>(max_exclusive_address_for(ConcreteHwa::WRITE_BLOCK_SIZE)))
+            , _entries_per_block(ConcreteHwa::WRITE_BLOCK_SIZE / SERIALIZED_ENTRY_SIZE)
         {
             static_assert(requires {
+                              { ConcreteHwa::WRITE_BLOCK_SIZE } -> std::convertible_to<size_t>;
                               { ConcreteHwa::PAGE_1_SIZE } -> std::convertible_to<size_t>;
                               { ConcreteHwa::PAGE_2_SIZE } -> std::convertible_to<size_t>;
-                              { ConcreteHwa::FACTORY_SIZE } -> std::convertible_to<size_t>; }, "EmuEeprom HWA must define PAGE_1_SIZE, PAGE_2_SIZE, and FACTORY_SIZE.");
+                              { ConcreteHwa::FACTORY_SIZE } -> std::convertible_to<size_t>; }, "EmuEeprom HWA must define WRITE_BLOCK_SIZE, PAGE_1_SIZE, PAGE_2_SIZE, and FACTORY_SIZE.");
 
             static_assert(ConcreteHwa::PAGE_1_SIZE == CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE,
                           "EmuEeprom page 1 size must match CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE.");
@@ -52,6 +58,14 @@ namespace zlibs::utils::emueeprom
                           "EmuEeprom page 2 size must match CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE.");
             static_assert(ConcreteHwa::FACTORY_SIZE == CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE,
                           "EmuEeprom factory page size must match CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE.");
+            static_assert(ConcreteHwa::WRITE_BLOCK_SIZE >= SERIALIZED_ENTRY_SIZE,
+                          "EmuEeprom write block must be at least one entry wide.");
+            static_assert((ConcreteHwa::WRITE_BLOCK_SIZE % SERIALIZED_ENTRY_SIZE) == 0,
+                          "EmuEeprom write block must be a multiple of the serialized entry size.");
+            static_assert((CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE % ConcreteHwa::WRITE_BLOCK_SIZE) == 0,
+                          "EmuEeprom page size must be a multiple of the backend write block.");
+            static_assert(ConcreteHwa::WRITE_BLOCK_SIZE <= MAX_WRITE_BLOCK_SIZE,
+                          "EmuEeprom backend write block exceeds internal buffer capacity.");
         }
 
         /**
@@ -78,14 +92,13 @@ namespace zlibs::utils::emueeprom
          *
          * Valid logical addresses are in the range `[0, max_address())`.
          *
-         * @param address Logical EEPROM address.
-         * @param data Value to write.
+         * @param entry Logical EEPROM entry to write.
          * @param cache_only When `true`, only the RAM cache is updated; use
-         *                   `write_cache_to_flash()` later to persist it.
+         *                   `flush()` later to persist it.
          *
          * @return Write result status.
          */
-        WriteStatus write(uint32_t address, uint16_t data, bool cache_only = false);
+        WriteStatus write(Entry entry, bool cache_only = false);
 
         /**
          * @brief Erases runtime pages and reinitializes them for use.
@@ -115,11 +128,11 @@ namespace zlibs::utils::emueeprom
         bool restore_from_factory();
 
         /**
-         * @brief Returns the current header state of a flash page.
+         * @brief Returns the current state of a flash page.
          *
          * @param page Page role to inspect.
          *
-         * @return Page header status.
+         * @return Page status.
          */
         PageStatus page_status(Page page);
 
@@ -135,15 +148,20 @@ namespace zlibs::utils::emueeprom
          *
          * @return Number of addressable 16-bit values.
          */
-        static constexpr uint32_t max_address()
+        uint16_t max_address() const
         {
-            return ADDRESS_COUNT;
+            return _max_address;
         }
 
         /**
-         * @brief Flushes the RAM cache to flash by forcing a page transfer.
+         * @brief Makes all known EEPROM state durable.
+         *
+         * This persists RAM-only cache changes and flushes a partial backend
+         * write block if one is pending.
+         *
+         * @return `true` if all pending data was persisted, otherwise `false`.
          */
-        void write_cache_to_flash();
+        bool flush();
 
         private:
         enum class PageOperation : uint8_t
@@ -152,61 +170,68 @@ namespace zlibs::utils::emueeprom
             Write,
         };
 
-        static constexpr size_t   ENTRY_SIZE_BYTES   = sizeof(uint32_t);
-        static constexpr size_t   PAGE_HEADER_SIZE   = sizeof(PageStatus);
-        static constexpr uint16_t ERASED_VALUE       = 0xFFFF;
-        static constexpr uint32_t EMPTY_WORD         = 0xFFFFFFFF;
-        static constexpr uint32_t ADDRESS_SHIFT_BITS = std::numeric_limits<uint16_t>::digits;
-        static constexpr size_t   ADDRESS_COUNT      = (CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE / ENTRY_SIZE_BYTES) - 1;
+        /**
+         * @brief Cached next free log offset and the page it belongs to.
+         */
+        struct NextWriteOffsetCache
+        {
+            Page     page   = Page::Page1;
+            uint32_t offset = 0;
+        };
 
-        static_assert(CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE % ENTRY_SIZE_BYTES == 0,
-                      "EmuEeprom page size must be a multiple of 4 bytes.");
-        static_assert(ADDRESS_COUNT > 0, "EmuEeprom page size must have room for at least one entry.");
-        static_assert(ADDRESS_COUNT <= std::numeric_limits<uint16_t>::max(),
+        using EntryAddress = decltype(Entry::address);
+        using EntryValue   = decltype(Entry::value);
+
+        static constexpr size_t MAX_WRITE_BLOCK_SIZE           = 256;
+        static constexpr size_t MIN_INTERNAL_ENTRY_BLOCK_COUNT = 3;
+        static constexpr size_t MAX_CACHE_ENTRY_COUNT =
+            CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE / SERIALIZED_ENTRY_SIZE;
+
+        static_assert(std::is_unsigned_v<EntryAddress>, "EmuEeprom entry address must be an unsigned integer.");
+        static_assert(std::is_unsigned_v<EntryValue>, "EmuEeprom entry value must be an unsigned integer.");
+        static_assert(CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE % SERIALIZED_ENTRY_SIZE == 0,
+                      "EmuEeprom page size must be a multiple of the serialized entry size.");
+        static_assert(MAX_CACHE_ENTRY_COUNT > 0, "EmuEeprom page size must have room for at least one entry.");
+        static_assert(MAX_CACHE_ENTRY_COUNT <= std::numeric_limits<uint16_t>::max(),
                       "EmuEeprom logical address space must fit in 16 bits.");
 
-        Hwa&                                _hwa;
-        std::array<uint16_t, ADDRESS_COUNT> _cache                = {};
-        uint32_t                            _next_offset_to_write = 0;
+        Hwa&                                        _hwa;
+        const size_t                                _write_block_size;
+        const uint16_t                              _max_address;
+        const size_t                                _entries_per_block;
+        std::array<uint16_t, MAX_CACHE_ENTRY_COUNT> _cache                   = {};
+        std::array<uint8_t, MAX_WRITE_BLOCK_SIZE>   _write_block_buffer      = {};
+        std::array<PageStatus, 3>                   _page_status_cache       = { PageStatus::Erased, PageStatus::Erased, PageStatus::Erased };
+        NextWriteOffsetCache                        _next_write_offset_cache = {};
+        Page                                        _write_block_page        = Page::Page1;
+        uint32_t                                    _write_block_offset      = 0;
+        size_t                                      _write_block_entries     = 0;
+        bool                                        _write_block_dirty       = false;
+        bool                                        _cache_dirty             = false;
 
         /**
-         * @brief Packs one logical EEPROM entry into the 32-bit flash word format.
+         * @brief Calculates the exclusive upper bound for logical addresses.
          *
-         * The upper 16 bits store the logical address and the lower 16 bits
-         * store the value.
+         * The status record uses the erased address value as an internal
+         * sentinel. The returned value itself is not a valid address; addresses
+         * are valid only while `address < max_address()`, so the
+         * returned bound may equal the reserved status address while still
+         * excluding it. A few backend write blocks are also kept out of the
+         * exposed address range so page status transitions and transfers
+         * always have room for their internal records.
          *
-         * @param address Logical EEPROM address.
-         * @param data 16-bit value stored at that address.
+         * @param write_block_size Backend write-block size in bytes.
          *
-         * @return Packed 32-bit flash entry.
+         * @return Exclusive upper bound for valid logical addresses. The returned
+         *         value itself is not a valid address.
          */
-        static constexpr uint32_t make_flash_entry(uint16_t address, uint16_t data)
+        static constexpr size_t max_exclusive_address_for(size_t write_block_size)
         {
-            return (static_cast<uint32_t>(address) << ADDRESS_SHIFT_BITS) | data;
-        }
+            constexpr size_t PAGE_ENTRY_COUNT          = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE / SERIALIZED_ENTRY_SIZE;
+            const size_t     entries_per_backend_block = write_block_size / SERIALIZED_ENTRY_SIZE;
+            const size_t     max_exclusive_address     = PAGE_ENTRY_COUNT - (MIN_INTERNAL_ENTRY_BLOCK_COUNT * entries_per_backend_block);
 
-        /**
-         * @brief Extracts the logical EEPROM address from one packed flash entry.
-         *
-         * @param entry Packed 32-bit flash entry.
-         *
-         * @return Stored logical address.
-         */
-        static constexpr uint16_t flash_entry_address(uint32_t entry)
-        {
-            return static_cast<uint16_t>((entry >> ADDRESS_SHIFT_BITS) & ERASED_VALUE);
-        }
-
-        /**
-         * @brief Extracts the 16-bit value from one packed flash entry.
-         *
-         * @param entry Packed 32-bit flash entry.
-         *
-         * @return Stored 16-bit value.
-         */
-        static constexpr uint16_t flash_entry_value(uint32_t entry)
-        {
-            return static_cast<uint16_t>(entry & ERASED_VALUE);
+            return max_exclusive_address > RESERVED_STATUS_ADDRESS ? RESERVED_STATUS_ADDRESS : max_exclusive_address;
         }
 
         /**
@@ -222,13 +247,135 @@ namespace zlibs::utils::emueeprom
         /**
          * @brief Appends one logical EEPROM entry to flash or updates only the RAM cache.
          *
-         * @param address Logical EEPROM address.
-         * @param data 16-bit value to store.
+         * @param entry Logical EEPROM entry to append.
          * @param cache_only When `true`, updates only the RAM cache.
          *
          * @return Write result status.
          */
-        WriteStatus write_internal(uint16_t address, uint16_t data, bool cache_only = false);
+        WriteStatus write_internal(Entry entry, bool cache_only = false);
+
+        /**
+         * @brief Stages one logical entry for writing at a page offset.
+         *
+         * The entry is serialized into the pending backend write-block buffer.
+         *
+         * @param page Page to write to.
+         * @param offset Byte offset inside the page.
+         * @param entry Logical EEPROM entry to stage.
+         *
+         * @return Write result status.
+         */
+        WriteStatus write_entry(Page page, uint32_t offset, Entry entry);
+
+        /**
+         * @brief Finds the next erased backend write block in a page.
+         *
+         * @param page Page to scan.
+         * @param offset Reference populated with the erased block offset on success.
+         *
+         * @return `true` when an erased block is found, otherwise `false`.
+         */
+        bool find_next_free_offset(Page page, uint32_t& offset);
+
+        /**
+         * @brief Refreshes one cached page status from flash.
+         *
+         * @param page Page whose status should be refreshed.
+         *
+         * @return `true` when flash was scanned successfully, otherwise `false`.
+         */
+        bool refresh_page_status(Page page);
+
+        /**
+         * @brief Returns one cached page status without touching flash.
+         *
+         * @param page Page whose cached status should be returned.
+         *
+         * @return Cached page status.
+         */
+        PageStatus cached_page_status(Page page) const;
+
+        /**
+         * @brief Updates cached page status without touching flash.
+         *
+         * @param page Page whose cached status should be updated.
+         * @param status New cached page status.
+         */
+        void set_cached_page_status(Page page, PageStatus status);
+
+        /**
+         * @brief Refreshes the cached next free log offset from flash.
+         *
+         * @param page Page to scan.
+         *
+         * @return `true` when flash was scanned successfully, otherwise `false`.
+         */
+        bool refresh_next_write_offset(Page page);
+
+        /**
+         * @brief Returns cached next free log offset and associated page without touching flash.
+         *
+         * @return Cached next free log offset and associated page.
+         */
+        NextWriteOffsetCache cached_next_write_offset() const;
+
+        /**
+         * @brief Updates cached next free log offset without touching flash.
+         *
+         * @param page Page associated with the offset.
+         * @param offset New cached next free log offset.
+         */
+        void set_cached_next_write_offset(Page page, uint32_t offset);
+
+        /**
+         * @brief Appends a page status entry to the regular log.
+         *
+         * @param page Page to write to.
+         * @param status Page status to append.
+         *
+         * @return `true` when the status entry was written and flushed, otherwise `false`.
+         */
+        bool write_page_status(Page page, PageStatus status);
+
+        /**
+         * @brief Encodes a page status into a reserved status entry's 16-bit value.
+         *
+         * @param status Page status to encode.
+         *
+         * @return Encoded 16-bit status value.
+         */
+        static EntryValue serialize_page_status(PageStatus status);
+
+        /**
+         * @brief Decodes a reserved status entry's 16-bit value into a page status.
+         *
+         * @param value Encoded 16-bit status value.
+         *
+         * @return Decoded page status, or an empty optional when the value is not a valid status encoding.
+         */
+        static std::optional<PageStatus> deserialize_page_status(EntryValue value);
+
+        /**
+         * @brief Reads and decodes one logical entry from a page offset.
+         *
+         * @param page Page to read from.
+         * @param offset Byte offset inside the page.
+         *
+         * @return Decoded entry, or an empty optional when the entry cannot be read.
+         */
+        std::optional<Entry> read_entry(Page page, uint32_t offset);
+
+        /**
+         * @brief Flushes a partially filled backend write block.
+         *
+         * @return `true` when no write is pending or the pending block was written, otherwise `false`.
+         */
+        bool flush_write_block();
+
+        /**
+         * @brief Clears pending backend write-block state without writing it.
+         */
+        void clear_write_block();
 
         /**
          * @brief Rebuilds the RAM cache from the active flash page.

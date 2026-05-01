@@ -8,6 +8,7 @@
 #include "emueeprom_common.h"
 
 #include <optional>
+#include <span>
 
 namespace zlibs::utils::emueeprom
 {
@@ -37,24 +38,31 @@ namespace zlibs::utils::emueeprom
         virtual bool erase_page(Page page) = 0;
 
         /**
-         * @brief Writes one 32-bit word at the given page offset.
+         * @brief Writes bytes at the given page offset.
+         *
+         * Implementations define their accepted write size and alignment using
+         * their `WRITE_BLOCK_SIZE` constant.
          *
          * @param page Target page role.
-         * @param address Byte offset within the page.
-         * @param data 32-bit word to write.
+         * @param offset Byte offset within the page.
+         * @param data Bytes to write.
          *
          * @return `true` on success, otherwise `false`.
          */
-        virtual bool write_32(Page page, uint32_t address, uint32_t data) = 0;
+        virtual bool write(Page page, uint32_t offset, std::span<const uint8_t> data) = 0;
 
         /**
-         * @brief Reads one 32-bit word at the given page offset.
+         * @brief Reads bytes at the given page offset.
+         *
+         * Implementations define their accepted read size and alignment using
+         * their `WRITE_BLOCK_SIZE` constant.
          *
          * @param page Target page role.
-         * @param address Byte offset within the page.
+         * @param offset Byte offset within the page.
+         * @param data Output buffer populated with bytes read from storage.
          *
-         * @return Read value on success, or `std::nullopt` when read fails.
+         * @return `true` on success, otherwise `false`.
          */
-        virtual std::optional<uint32_t> read_32(Page page, uint32_t address) = 0;
+        virtual bool read(Page page, uint32_t offset, std::span<uint8_t> data) = 0;
     };
 }    // namespace zlibs::utils::emueeprom

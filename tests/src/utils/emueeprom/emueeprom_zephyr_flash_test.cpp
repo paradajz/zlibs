@@ -12,7 +12,9 @@
 #include <zephyr/drivers/flash.h>
 #include <zephyr/storage/flash_map.h>
 
+#include <array>
 #include <optional>
+#include <span>
 
 using namespace zlibs::utils::emueeprom;
 
@@ -39,9 +41,10 @@ namespace
     class HwaFlash : public Hwa
     {
         public:
-        static constexpr size_t PAGE_1_SIZE  = PAGE_SIZE;
-        static constexpr size_t PAGE_2_SIZE  = PAGE_SIZE;
-        static constexpr size_t FACTORY_SIZE = PAGE_SIZE;
+        static constexpr size_t PAGE_1_SIZE      = PAGE_SIZE;
+        static constexpr size_t PAGE_2_SIZE      = PAGE_SIZE;
+        static constexpr size_t FACTORY_SIZE     = PAGE_SIZE;
+        static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
 
         bool init() override
         {
@@ -54,35 +57,32 @@ namespace
             return flash_erase(partition.dev, partition.offset, partition.size) == 0;
         }
 
-        bool write_32(Page page, uint32_t offset, uint32_t data) override
+        bool write(Page page, uint32_t offset, std::span<const uint8_t> data) override
         {
             const auto& partition = partition_for(page);
 
-            if ((offset + sizeof(data)) > partition.size)
+            if ((data.size() != WRITE_BLOCK_SIZE) ||
+                ((offset % WRITE_BLOCK_SIZE) != 0) ||
+                ((offset + data.size()) > partition.size))
             {
                 return false;
             }
 
-            return flash_write(partition.dev, partition.offset + offset, &data, sizeof(data)) == 0;
+            return flash_write(partition.dev, partition.offset + offset, data.data(), data.size()) == 0;
         }
 
-        std::optional<uint32_t> read_32(Page page, uint32_t offset) override
+        bool read(Page page, uint32_t offset, std::span<uint8_t> data) override
         {
             const auto& partition = partition_for(page);
 
-            if ((offset + sizeof(uint32_t)) > partition.size)
+            if ((data.size() != WRITE_BLOCK_SIZE) ||
+                ((offset % WRITE_BLOCK_SIZE) != 0) ||
+                ((offset + data.size()) > partition.size))
             {
-                return {};
+                return false;
             }
 
-            uint32_t data = 0;
-
-            if (flash_read(partition.dev, partition.offset + offset, &data, sizeof(data)) != 0)
-            {
-                return {};
-            }
-
-            return data;
+            return flash_read(partition.dev, partition.offset + offset, data.data(), data.size()) == 0;
         }
 
         private:
@@ -103,15 +103,15 @@ namespace
             return _page1;
         }
 
-        static inline const Partition _page1   = make_partition(FIXED_PARTITION_DEVICE(page1_partition),
-                                                                FIXED_PARTITION_OFFSET(page1_partition),
-                                                                FIXED_PARTITION_SIZE(page1_partition));
-        static inline const Partition _page2   = make_partition(FIXED_PARTITION_DEVICE(page2_partition),
-                                                                FIXED_PARTITION_OFFSET(page2_partition),
-                                                                FIXED_PARTITION_SIZE(page2_partition));
-        static inline const Partition _factory = make_partition(FIXED_PARTITION_DEVICE(factory_partition),
-                                                                FIXED_PARTITION_OFFSET(factory_partition),
-                                                                FIXED_PARTITION_SIZE(factory_partition));
+        static inline const Partition _page1   = make_partition(PARTITION_DEVICE(page1_partition),
+                                                                PARTITION_OFFSET(page1_partition),
+                                                                PARTITION_SIZE(page1_partition));
+        static inline const Partition _page2   = make_partition(PARTITION_DEVICE(page2_partition),
+                                                                PARTITION_OFFSET(page2_partition),
+                                                                PARTITION_SIZE(page2_partition));
+        static inline const Partition _factory = make_partition(PARTITION_DEVICE(factory_partition),
+                                                                PARTITION_OFFSET(factory_partition),
+                                                                PARTITION_SIZE(factory_partition));
     };
 
     class EmuEepromFlashTest : public ::testing::Test
@@ -119,9 +119,9 @@ namespace
         protected:
         void SetUp() override
         {
-            ASSERT_GE(FIXED_PARTITION_SIZE(page1_partition), PAGE_SIZE);
-            ASSERT_GE(FIXED_PARTITION_SIZE(page2_partition), PAGE_SIZE);
-            ASSERT_GE(FIXED_PARTITION_SIZE(factory_partition), PAGE_SIZE);
+            ASSERT_GE(PARTITION_SIZE(page1_partition), PAGE_SIZE);
+            ASSERT_GE(PARTITION_SIZE(page2_partition), PAGE_SIZE);
+            ASSERT_GE(PARTITION_SIZE(factory_partition), PAGE_SIZE);
 
             ASSERT_TRUE(_hwa.init());
             ASSERT_TRUE(_hwa.erase_page(Page::Page1));
@@ -131,10 +131,21 @@ namespace
 
         void write_raw_flash_entry(Page page, size_t slot_index, uint16_t address, uint16_t value)
         {
-            constexpr uint32_t ADDRESS_SHIFT = 16;
-            const auto         entry         = (static_cast<uint32_t>(address) << ADDRESS_SHIFT) | value;
+            constexpr uint32_t                              DATA_OFFSET = HwaFlash::WRITE_BLOCK_SIZE;
+            std::array<uint8_t, HwaFlash::WRITE_BLOCK_SIZE> buffer      = {};
 
-            ASSERT_TRUE(_hwa.write_32(page, sizeof(PageStatus) + (slot_index * sizeof(uint32_t)), entry));
+            std::fill(buffer.begin(), buffer.end(), 0xFF);
+            serialize_entry(make_entry(address, value), std::span<uint8_t>(buffer.data(), SERIALIZED_ENTRY_SIZE));
+            ASSERT_TRUE(_hwa.write(page, DATA_OFFSET + (slot_index * sizeof(uint32_t)), buffer));
+        }
+
+        void write_raw_page_status(Page page, uint16_t status)
+        {
+            std::array<uint8_t, HwaFlash::WRITE_BLOCK_SIZE> buffer = {};
+
+            std::fill(buffer.begin(), buffer.end(), 0xFF);
+            serialize_entry(make_entry(RESERVED_STATUS_ADDRESS, status), std::span<uint8_t>(buffer.data(), SERIALIZED_ENTRY_SIZE));
+            ASSERT_TRUE(_hwa.write(page, 0, buffer));
         }
 
         HwaFlash _hwa;
@@ -151,10 +162,15 @@ TEST_F(EmuEepromFlashTest, PageTransferPersistsLatestValueUsingZephyrFlashApi)
     ASSERT_EQ(PageStatus::Valid, emu_eeprom.page_status(Page::Page1));
     ASSERT_EQ(PageStatus::Formatted, emu_eeprom.page_status(Page::Page2));
 
-    for (size_t i = 0; i < PAGE_SIZE / sizeof(uint32_t); i++)
+    for (size_t i = 0; i < PAGE_SIZE; i++)
     {
         write_value = 0x1200 + i;
-        ASSERT_EQ(WriteStatus::Ok, emu_eeprom.write(0, write_value));
+        ASSERT_EQ(WriteStatus::Ok, emu_eeprom.write(make_entry(0, write_value)));
+
+        if (emu_eeprom.page_status(Page::Page2) == PageStatus::Valid)
+        {
+            break;
+        }
     }
 
     ASSERT_EQ(ReadStatus::Ok, emu_eeprom.read(0, value));
@@ -169,7 +185,7 @@ TEST_F(EmuEepromFlashTest, RestoreFromFactoryCopiesFactoryPageUsingZephyrFlashAp
     uint16_t  value0 = 0;
     uint16_t  value1 = 0;
 
-    ASSERT_TRUE(_hwa.write_32(Page::Factory, 0, static_cast<uint32_t>(PageStatus::Valid)));
+    write_raw_page_status(Page::Factory, static_cast<uint16_t>(PageStatus::Valid));
     write_raw_flash_entry(Page::Factory, 0, 0, 0x1234);
     write_raw_flash_entry(Page::Factory, 1, 1, 0x5678);
 
@@ -188,8 +204,8 @@ TEST_F(EmuEepromFlashTest, RestoreFromFactoryFailsWhenFactoryPageStatusIsInvalid
     uint16_t  value = 0;
 
     ASSERT_TRUE(emu_eeprom.init());
-    ASSERT_EQ(WriteStatus::Ok, emu_eeprom.write(0, 0x2468));
-    ASSERT_TRUE(_hwa.write_32(Page::Factory, 0, static_cast<uint32_t>(PageStatus::Formatted)));
+    ASSERT_EQ(WriteStatus::Ok, emu_eeprom.write(make_entry(0, 0x2468)));
+    write_raw_page_status(Page::Factory, static_cast<uint16_t>(PageStatus::Formatted));
 
     ASSERT_FALSE(emu_eeprom.restore_from_factory());
     ASSERT_EQ(PageStatus::Valid, emu_eeprom.page_status(Page::Page1));
