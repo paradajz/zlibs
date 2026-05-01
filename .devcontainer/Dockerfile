@@ -1,1 +1,1 @@
-FROM ghcr.io/paradajz/zenv:b521042e7fc04cf76ad7a2b47a913b8396e000c0
+FROM ghcr.io/paradajz/zenv:c5553452a12edb73f5b9391123460944a1a3ecd5
