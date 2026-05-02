@@ -40,8 +40,8 @@ namespace zlibs::utils::emueeprom
         /**
          * @brief Writes bytes at the given page offset.
          *
-         * Implementations define their accepted write size and alignment using
-         * their `WRITE_BLOCK_SIZE` constant.
+         * Implementations must accept the write size and alignment passed to
+         * their owning `EmuEeprom` instance.
          *
          * @param page Target page role.
          * @param offset Byte offset within the page.
@@ -54,8 +54,8 @@ namespace zlibs::utils::emueeprom
         /**
          * @brief Reads bytes at the given page offset.
          *
-         * Reads must accept offsets aligned to `WRITE_BLOCK_SIZE`; the requested
-         * size can be one or more complete write blocks.
+         * Reads must accept offsets aligned to the configured write-block size;
+         * the requested size can be one or more complete write blocks.
          *
          * @param page Target page role.
          * @param offset Byte offset within the page.

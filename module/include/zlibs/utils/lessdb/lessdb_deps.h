@@ -28,11 +28,11 @@ namespace zlibs::utils::lessdb
         virtual bool init() = 0;
 
         /**
-         * @brief Returns the total storage size in bytes.
+         * @brief Returns the number of logical addresses available to LessDB.
          *
-         * @return Storage size in bytes.
+         * @return Logical address count.
          */
-        virtual uint32_t size() = 0;
+        virtual uint32_t address_count() = 0;
 
         /**
          * @brief Clears all storage contents.

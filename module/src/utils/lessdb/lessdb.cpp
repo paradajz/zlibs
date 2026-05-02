@@ -17,7 +17,7 @@ bool LessDb::set_layout(std::span<const Block> layout, uint32_t start_address)
 {
     const LockGuard lock(_mutex);
 
-    if (start_address >= _hwa.size())
+    if (start_address >= _hwa.address_count())
     {
         return false;
     }
@@ -28,7 +28,7 @@ bool LessDb::set_layout(std::span<const Block> layout, uint32_t start_address)
     }
 
     uint32_t total_usage = layout_size(layout);
-    uint32_t available   = _hwa.size() - start_address;
+    uint32_t available   = _hwa.address_count() - start_address;
 
     if (total_usage > available)
     {
@@ -442,9 +442,9 @@ bool LessDb::init_data(FactoryResetType type)
     return true;
 }
 
-uint32_t LessDb::db_size() const
+uint32_t LessDb::address_count() const
 {
-    return _hwa.size();
+    return _hwa.address_count();
 }
 
 bool LessDb::check_parameters(size_t block_index, size_t section_index, size_t parameter_index)

@@ -6,16 +6,12 @@ project(test)
 
 include(CheckCXXSourceCompiles)
 
-# Verify compile-time API contract:
-# matching backend page sizes should compile, while missing or mismatched
-# page sizes should fail because EmuEeprom now requires compile-time HWA
-# capacities.
+# Verify the compile-time API contract.
 
 set(CMAKE_REQUIRED_INCLUDES "$ENV{ZEPHYR_PROJECT}/module/include")
 set(CMAKE_REQUIRED_FLAGS "-std=gnu++20")
 
 check_cxx_source_compiles("
-    #define CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE 256
     #include <span>
     #include <zlibs/utils/emueeprom/emueeprom.h>
 
@@ -24,11 +20,6 @@ check_cxx_source_compiles("
     class MatchingHwa : public Hwa
     {
         public:
-        static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
-        static constexpr size_t PAGE_1_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t PAGE_2_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t FACTORY_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-
         bool init() override { return true; }
         bool erase_page(Page) override { return true; }
         bool write(Page, uint32_t, std::span<const uint8_t>) override { return true; }
@@ -38,7 +29,7 @@ check_cxx_source_compiles("
     int main()
     {
         MatchingHwa hwa;
-        EmuEeprom emu_eeprom(hwa);
+        EmuEeprom<256, sizeof(uint32_t)> emu_eeprom(hwa);
         static_cast<void>(emu_eeprom.max_address());
         return 0;
     }
@@ -49,13 +40,12 @@ if(NOT EMUEEPROM_MATCHING_BACKEND_COMPILES)
 endif()
 
 check_cxx_source_compiles("
-    #define CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE 256
     #include <span>
     #include <zlibs/utils/emueeprom/emueeprom.h>
 
     using namespace zlibs::utils::emueeprom;
 
-    class MissingSizesHwa : public Hwa
+    class MatchingHwa : public Hwa
     {
         public:
         bool init() override { return true; }
@@ -66,31 +56,26 @@ check_cxx_source_compiles("
 
     int main()
     {
-        MissingSizesHwa hwa;
-        [[maybe_unused]] EmuEeprom emu_eeprom(hwa);
+        MatchingHwa hwa;
+        EmuEeprom<256, sizeof(uint32_t), address_count_for(256, sizeof(uint32_t))> emu_eeprom(hwa);
+        static_cast<void>(emu_eeprom.max_address());
         return 0;
     }
-" EMUEEPROM_MISSING_BACKEND_SIZES_COMPILES)
+" EMUEEPROM_EXPLICIT_MAX_ADDRESS_COUNT_COMPILES)
 
-if(EMUEEPROM_MISSING_BACKEND_SIZES_COMPILES)
-    message(FATAL_ERROR "emueeprom backend without page-size constants unexpectedly compiles; constructor contract is broken")
+if(NOT EMUEEPROM_EXPLICIT_MAX_ADDRESS_COUNT_COMPILES)
+    message(FATAL_ERROR "emueeprom explicit maximum address count no longer compiles")
 endif()
 
 check_cxx_source_compiles("
-    #define CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE 256
     #include <span>
     #include <zlibs/utils/emueeprom/emueeprom.h>
 
     using namespace zlibs::utils::emueeprom;
 
-    class MismatchedHwa : public Hwa
+    class MatchingHwa : public Hwa
     {
         public:
-        static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
-        static constexpr size_t PAGE_1_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t PAGE_2_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE + 4;
-        static constexpr size_t FACTORY_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-
         bool init() override { return true; }
         bool erase_page(Page) override { return true; }
         bool write(Page, uint32_t, std::span<const uint8_t>) override { return true; }
@@ -99,18 +84,65 @@ check_cxx_source_compiles("
 
     int main()
     {
-        MismatchedHwa hwa;
-        [[maybe_unused]] EmuEeprom emu_eeprom(hwa);
+        MatchingHwa hwa;
+        [[maybe_unused]] EmuEeprom<256, sizeof(uint32_t), address_count_for(256, sizeof(uint32_t)) + 1> emu_eeprom(hwa);
         return 0;
     }
-" EMUEEPROM_MISMATCHED_BACKEND_COMPILES)
+" EMUEEPROM_EXCESSIVE_ADDRESS_COUNT_COMPILES)
 
-if(EMUEEPROM_MISMATCHED_BACKEND_COMPILES)
-    message(FATAL_ERROR "emueeprom mismatched backend sizes unexpectedly compile; constructor contract is broken")
+if(EMUEEPROM_EXCESSIVE_ADDRESS_COUNT_COMPILES)
+    message(FATAL_ERROR "emueeprom excessive explicit address count unexpectedly compiles; constructor contract is broken")
 endif()
 
 check_cxx_source_compiles("
-    #define CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE 256
+    #include <span>
+    #include <zlibs/utils/emueeprom/emueeprom.h>
+
+    using namespace zlibs::utils::emueeprom;
+
+    class NotHwa
+    {};
+
+    int main()
+    {
+        NotHwa hwa;
+        [[maybe_unused]] EmuEeprom<256, sizeof(uint32_t), 1> emu_eeprom(hwa);
+        return 0;
+    }
+" EMUEEPROM_NON_HWA_BACKEND_COMPILES)
+
+if(EMUEEPROM_NON_HWA_BACKEND_COMPILES)
+    message(FATAL_ERROR "emueeprom non-HWA backend unexpectedly compiles; constructor contract is broken")
+endif()
+
+check_cxx_source_compiles("
+    #include <span>
+    #include <zlibs/utils/emueeprom/emueeprom.h>
+
+    using namespace zlibs::utils::emueeprom;
+
+    class InvalidPageSizeHwa : public Hwa
+    {
+        public:
+        bool init() override { return true; }
+        bool erase_page(Page) override { return true; }
+        bool write(Page, uint32_t, std::span<const uint8_t>) override { return true; }
+        bool read(Page, uint32_t, std::span<uint8_t>) override { return true; }
+    };
+
+    int main()
+    {
+        InvalidPageSizeHwa hwa;
+        [[maybe_unused]] EmuEeprom<260, sizeof(uint32_t), 1> emu_eeprom(hwa);
+        return 0;
+    }
+" EMUEEPROM_INVALID_PAGE_SIZE_COMPILES)
+
+if(EMUEEPROM_INVALID_PAGE_SIZE_COMPILES)
+    message(FATAL_ERROR "emueeprom invalid page size unexpectedly compiles; constructor contract is broken")
+endif()
+
+check_cxx_source_compiles("
     #include <span>
     #include <zlibs/utils/emueeprom/emueeprom.h>
 
@@ -119,11 +151,6 @@ check_cxx_source_compiles("
     class NoLogicalSpaceHwa : public Hwa
     {
         public:
-        static constexpr size_t WRITE_BLOCK_SIZE = 256;
-        static constexpr size_t PAGE_1_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t PAGE_2_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t FACTORY_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-
         bool init() override { return true; }
         bool erase_page(Page) override { return true; }
         bool write(Page, uint32_t, std::span<const uint8_t>) override { return true; }
@@ -133,7 +160,7 @@ check_cxx_source_compiles("
     int main()
     {
         NoLogicalSpaceHwa hwa;
-        [[maybe_unused]] EmuEeprom emu_eeprom(hwa);
+        [[maybe_unused]] EmuEeprom<256, 256, 1> emu_eeprom(hwa);
         return 0;
     }
 " EMUEEPROM_NO_LOGICAL_SPACE_BACKEND_COMPILES)

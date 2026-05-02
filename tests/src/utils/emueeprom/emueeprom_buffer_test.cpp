@@ -17,6 +17,8 @@ using namespace zlibs::utils::emueeprom;
 namespace
 {
     constexpr size_t PAGE_COUNT = 3;
+    constexpr size_t PAGE_SIZE  = 256;
+
     template<typename HwaType>
     constexpr uint32_t data_start_offset()
     {
@@ -39,9 +41,6 @@ namespace
     {
         public:
         static constexpr size_t WRITE_BLOCK_SIZE = WriteBlockSize;
-        static constexpr size_t PAGE_1_SIZE      = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t PAGE_2_SIZE      = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t FACTORY_SIZE     = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
 
         bool init() override
         {
@@ -155,15 +154,15 @@ namespace
             return deserialize_value<uint32_t>(std::span<const uint8_t>(page_data.data() + offset, sizeof(uint32_t)));
         }
 
-        bool                                                                                fail_init          = false;
-        std::optional<Page>                                                                 fail_erase_page    = {};
-        std::optional<Page>                                                                 fail_read_page     = {};
-        std::optional<uint32_t>                                                             fail_read_offset   = {};
-        std::optional<Page>                                                                 fail_write_page    = {};
-        std::optional<uint32_t>                                                             fail_write_offset  = {};
-        std::array<std::array<uint8_t, CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE>, PAGE_COUNT> page_array         = {};
-        size_t                                                                              page_erase_counter = 0;
-        size_t                                                                              max_read_size      = 0;
+        bool                                                   fail_init          = false;
+        std::optional<Page>                                    fail_erase_page    = {};
+        std::optional<Page>                                    fail_read_page     = {};
+        std::optional<uint32_t>                                fail_read_offset   = {};
+        std::optional<Page>                                    fail_write_page    = {};
+        std::optional<uint32_t>                                fail_write_offset  = {};
+        std::array<std::array<uint8_t, PAGE_SIZE>, PAGE_COUNT> page_array         = {};
+        size_t                                                 page_erase_counter = 0;
+        size_t                                                 max_read_size      = 0;
 
         private:
         bool should_fail_read(Page page, uint32_t offset) const
@@ -181,6 +180,9 @@ namespace
 
     using HwaTest  = HwaTestBase<>;
     using HwaTest8 = HwaTestBase<sizeof(uint64_t)>;
+
+    using EmuEepromTestStorage       = EmuEeprom<PAGE_SIZE, HwaTest::WRITE_BLOCK_SIZE>;
+    using EmuEepromWriteBlockStorage = EmuEeprom<PAGE_SIZE, HwaTest8::WRITE_BLOCK_SIZE>;
 
     class EmuEepromTest : public ::testing::Test
     {
@@ -219,8 +221,8 @@ namespace
                                    make_entry(address, value));
         }
 
-        HwaTest   _hwa;
-        EmuEeprom _emu_eeprom = EmuEeprom(_hwa);
+        HwaTest              _hwa;
+        EmuEepromTestStorage _emu_eeprom = EmuEepromTestStorage(_hwa);
     };
 
     class EmuEepromWriteBlockTest : public ::testing::Test
@@ -239,8 +241,8 @@ namespace
             return data_start_offset<HwaTest8>();
         }
 
-        HwaTest8  _hwa;
-        EmuEeprom _emu_eeprom = EmuEeprom(_hwa);
+        HwaTest8                   _hwa;
+        EmuEepromWriteBlockStorage _emu_eeprom = EmuEepromWriteBlockStorage(_hwa);
     };
 
 }    // namespace
@@ -253,8 +255,8 @@ TEST_F(EmuEepromTest, ReadNonExisting)
 
 TEST_F(EmuEepromTest, StartupScansUseBulkReads)
 {
-    HwaTest   hwa;
-    EmuEeprom emu_eeprom(hwa);
+    HwaTest              hwa;
+    EmuEepromTestStorage emu_eeprom(hwa);
 
     hwa.erase_raw_page(Page::Page1);
     hwa.erase_raw_page(Page::Page2);
@@ -266,8 +268,8 @@ TEST_F(EmuEepromTest, StartupScansUseBulkReads)
 
 TEST_F(EmuEepromWriteBlockTest, FourByteBackendUsesFourByteHeader)
 {
-    HwaTest   hwa;
-    EmuEeprom emu_eeprom(hwa);
+    HwaTest              hwa;
+    EmuEepromTestStorage emu_eeprom(hwa);
 
     hwa.erase_raw_page(Page::Page1);
     hwa.erase_raw_page(Page::Page2);
@@ -417,7 +419,7 @@ TEST_F(EmuEepromTest, PageTransfer)
     ASSERT_EQ(PageStatus::Valid, _emu_eeprom.page_status(Page::Page1));
     ASSERT_EQ(PageStatus::Formatted, _emu_eeprom.page_status(Page::Page2));
 
-    for (size_t i = 0; i < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE; i++)
+    for (size_t i = 0; i < PAGE_SIZE; i++)
     {
         write_value = 0x1234 + i;
         ASSERT_EQ(WriteStatus::Ok, _emu_eeprom.write(make_entry(0, write_value)));
@@ -497,9 +499,9 @@ TEST_F(EmuEepromTest, OverFlow)
 
     set_page_status(Page::Page1, PageStatus::Valid);
     set_page_status(Page::Page2, PageStatus::Formatted);
-    write_raw_flash_entry(Page::Page1, 0, static_cast<uint16_t>(CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE + 1), 0x0000u);
+    write_raw_flash_entry(Page::Page1, 0, static_cast<uint16_t>(PAGE_SIZE + 1), 0x0000u);
 
-    assert_entry_eq(make_entry(static_cast<uint16_t>(CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE + 1), 0x0000u),
+    assert_entry_eq(make_entry(static_cast<uint16_t>(PAGE_SIZE + 1), 0x0000u),
                     _hwa.raw_read_entry(Page::Page1, data_start_offset<HwaTest>()));
 
     ASSERT_TRUE(_emu_eeprom.init());

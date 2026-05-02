@@ -8,6 +8,7 @@
 #include <algorithm>
 
 using namespace zlibs::utils::emueeprom;
+using namespace zlibs::utils::emueeprom::internal;
 
 namespace
 {
@@ -23,7 +24,7 @@ namespace
     }
 }    // namespace
 
-bool EmuEeprom::init()
+bool EmuEepromInternal::init()
 {
     if (!_hwa.init())
     {
@@ -231,7 +232,7 @@ bool EmuEeprom::init()
     return true;
 }
 
-bool EmuEeprom::format(bool format_factory_page)
+bool EmuEepromInternal::format(bool format_factory_page)
 {
     clear_write_block();
 
@@ -277,7 +278,7 @@ bool EmuEeprom::format(bool format_factory_page)
     return true;
 }
 
-bool EmuEeprom::store_to_factory()
+bool EmuEepromInternal::store_to_factory()
 {
     Page active_page;
 
@@ -300,7 +301,7 @@ bool EmuEeprom::store_to_factory()
 
     std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
-    for (uint32_t offset = 0; offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE; offset += _write_block_size)
+    for (uint32_t offset = 0; offset < _page_size; offset += _write_block_size)
     {
         std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
         auto block = std::span<uint8_t>(buffer.data(), _write_block_size);
@@ -326,7 +327,7 @@ bool EmuEeprom::store_to_factory()
     return true;
 }
 
-bool EmuEeprom::restore_from_factory()
+bool EmuEepromInternal::restore_from_factory()
 {
     if (!refresh_page_status(Page::Factory))
     {
@@ -359,7 +360,7 @@ bool EmuEeprom::restore_from_factory()
 
     std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
-    for (uint32_t offset = 0; offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE; offset += _write_block_size)
+    for (uint32_t offset = 0; offset < _page_size; offset += _write_block_size)
     {
         std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
         auto block = std::span<uint8_t>(buffer.data(), _write_block_size);
@@ -395,7 +396,7 @@ bool EmuEeprom::restore_from_factory()
     return cache();
 }
 
-ReadStatus EmuEeprom::read(uint32_t address, uint16_t& data)
+ReadStatus EmuEepromInternal::read(uint32_t address, uint16_t& data)
 {
     if (address >= max_address())
     {
@@ -415,7 +416,7 @@ ReadStatus EmuEeprom::read(uint32_t address, uint16_t& data)
         return ReadStatus::NoPage;
     }
 
-    uint32_t read_offset = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE - SERIALIZED_ENTRY_SIZE;
+    uint32_t read_offset = _page_size - SERIALIZED_ENTRY_SIZE;
 
     const auto cached_read_offset = cached_next_write_offset();
 
@@ -454,7 +455,7 @@ ReadStatus EmuEeprom::read(uint32_t address, uint16_t& data)
     return ReadStatus::NoVariable;
 }
 
-WriteStatus EmuEeprom::write(Entry entry, bool cache_only)
+WriteStatus EmuEepromInternal::write(Entry entry, bool cache_only)
 {
     if ((entry.address == RESERVED_STATUS_ADDRESS) || (entry.address >= max_address()))
     {
@@ -476,7 +477,7 @@ WriteStatus EmuEeprom::write(Entry entry, bool cache_only)
     return status;
 }
 
-bool EmuEeprom::find_valid_page(PageOperation operation, Page& page)
+bool EmuEepromInternal::find_valid_page(PageOperation operation, Page& page)
 {
     const auto page_1_status = cached_page_status(Page::Page1);
     const auto page_2_status = cached_page_status(Page::Page2);
@@ -527,7 +528,7 @@ bool EmuEeprom::find_valid_page(PageOperation operation, Page& page)
     return true;
 }
 
-WriteStatus EmuEeprom::write_internal(Entry entry, bool cache_only)
+WriteStatus EmuEepromInternal::write_internal(Entry entry, bool cache_only)
 {
     if ((entry.address == RESERVED_STATUS_ADDRESS) || (entry.address >= max_address()))
     {
@@ -554,7 +555,7 @@ WriteStatus EmuEeprom::write_internal(Entry entry, bool cache_only)
 
     if ((cached_write_offset.page == valid_page) && (cached_write_offset.offset != 0))
     {
-        if (cached_write_offset.offset >= CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE)
+        if (cached_write_offset.offset >= _page_size)
         {
             return WriteStatus::PageFull;
         }
@@ -570,7 +571,7 @@ WriteStatus EmuEeprom::write_internal(Entry entry, bool cache_only)
 
         cached_write_offset = cached_next_write_offset();
 
-        if (cached_write_offset.offset >= CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE)
+        if (cached_write_offset.offset >= _page_size)
         {
             return WriteStatus::PageFull;
         }
@@ -591,9 +592,9 @@ WriteStatus EmuEeprom::write_internal(Entry entry, bool cache_only)
     return WriteStatus::Ok;
 }
 
-WriteStatus EmuEeprom::write_entry(Page page, uint32_t offset, Entry entry)
+WriteStatus EmuEepromInternal::write_entry(Page page, uint32_t offset, Entry entry)
 {
-    if ((offset + SERIALIZED_ENTRY_SIZE) > CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE)
+    if ((offset + SERIALIZED_ENTRY_SIZE) > _page_size)
     {
         return WriteStatus::PageFull;
     }
@@ -642,12 +643,12 @@ WriteStatus EmuEeprom::write_entry(Page page, uint32_t offset, Entry entry)
     return WriteStatus::Ok;
 }
 
-std::optional<uint32_t> EmuEeprom::find_next_free_offset(Page page)
+std::optional<uint32_t> EmuEepromInternal::find_next_free_offset(Page page)
 {
     std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
     for (uint32_t read_offset = 0;
-         read_offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+         read_offset < _page_size;
          read_offset += _read_block_size)
     {
         std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
@@ -672,7 +673,7 @@ std::optional<uint32_t> EmuEeprom::find_next_free_offset(Page page)
     return {};
 }
 
-WriteStatus EmuEeprom::page_transfer()
+WriteStatus EmuEepromInternal::page_transfer()
 {
     if (!flush_write_block())
     {
@@ -755,7 +756,7 @@ WriteStatus EmuEeprom::page_transfer()
     return WriteStatus::Ok;
 }
 
-PageStatus EmuEeprom::page_status(Page page)
+PageStatus EmuEepromInternal::page_status(Page page)
 {
     if (!refresh_page_status(page))
     {
@@ -765,9 +766,9 @@ PageStatus EmuEeprom::page_status(Page page)
     return cached_page_status(page);
 }
 
-bool EmuEeprom::refresh_page_status(Page page)
+bool EmuEepromInternal::refresh_page_status(Page page)
 {
-    uint32_t offset     = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE - SERIALIZED_ENTRY_SIZE;
+    uint32_t offset     = _page_size - SERIALIZED_ENTRY_SIZE;
     Page     write_page = Page::Page1;
 
     if (find_valid_page(PageOperation::Write, write_page) && (write_page == page))
@@ -784,7 +785,7 @@ bool EmuEeprom::refresh_page_status(Page page)
 
         if (cached_write_offset.offset > 0)
         {
-            offset = std::min(cached_write_offset.offset, static_cast<uint32_t>(CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE)) - SERIALIZED_ENTRY_SIZE;
+            offset = std::min(cached_write_offset.offset, static_cast<uint32_t>(_page_size)) - SERIALIZED_ENTRY_SIZE;
         }
     }
 
@@ -839,22 +840,22 @@ bool EmuEeprom::refresh_page_status(Page page)
     return true;
 }
 
-PageStatus EmuEeprom::cached_page_status(Page page) const
+PageStatus EmuEepromInternal::cached_page_status(Page page) const
 {
     return _page_status_cache[static_cast<size_t>(page)];
 }
 
-void EmuEeprom::set_cached_page_status(Page page, PageStatus status)
+void EmuEepromInternal::set_cached_page_status(Page page, PageStatus status)
 {
     _page_status_cache[static_cast<size_t>(page)] = status;
 }
 
-bool EmuEeprom::refresh_next_write_offset(Page page)
+bool EmuEepromInternal::refresh_next_write_offset(Page page)
 {
     std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
     for (uint32_t read_offset = 0;
-         read_offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+         read_offset < _page_size;
          read_offset += _read_block_size)
     {
         std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
@@ -877,16 +878,16 @@ bool EmuEeprom::refresh_next_write_offset(Page page)
         }
     }
 
-    set_cached_next_write_offset(page, CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE);
+    set_cached_next_write_offset(page, _page_size);
     return true;
 }
 
-EmuEeprom::NextWriteOffsetCache EmuEeprom::cached_next_write_offset() const
+EmuEepromInternal::NextWriteOffsetCache EmuEepromInternal::cached_next_write_offset() const
 {
     return _next_write_offset_cache;
 }
 
-void EmuEeprom::set_cached_next_write_offset(Page page, uint32_t offset)
+void EmuEepromInternal::set_cached_next_write_offset(Page page, uint32_t offset)
 {
     _next_write_offset_cache = NextWriteOffsetCache{
         .page   = page,
@@ -894,7 +895,7 @@ void EmuEeprom::set_cached_next_write_offset(Page page, uint32_t offset)
     };
 }
 
-bool EmuEeprom::write_page_status(Page page, PageStatus status)
+bool EmuEepromInternal::write_page_status(Page page, PageStatus status)
 {
     if (!flush_write_block())
     {
@@ -925,7 +926,7 @@ bool EmuEeprom::write_page_status(Page page, PageStatus status)
     if (cached_write_offset.page == page)
     {
         const uint32_t next_offset = std::min(static_cast<uint32_t>(((offset.value() / _write_block_size) * _write_block_size) + _write_block_size),
-                                              static_cast<uint32_t>(CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE));
+                                              static_cast<uint32_t>(_page_size));
 
         set_cached_next_write_offset(page, next_offset);
     }
@@ -934,12 +935,12 @@ bool EmuEeprom::write_page_status(Page page, PageStatus status)
     return true;
 }
 
-EmuEeprom::EntryValue EmuEeprom::serialize_page_status(PageStatus status)
+EmuEepromInternal::EntryValue EmuEepromInternal::serialize_page_status(PageStatus status)
 {
     return static_cast<EntryValue>(status);
 }
 
-std::optional<PageStatus> EmuEeprom::deserialize_page_status(EntryValue value)
+std::optional<PageStatus> EmuEepromInternal::deserialize_page_status(EntryValue value)
 {
     switch (value)
     {
@@ -957,7 +958,7 @@ std::optional<PageStatus> EmuEeprom::deserialize_page_status(EntryValue value)
     }
 }
 
-std::optional<Entry> EmuEeprom::read_entry(Page page, uint32_t offset)
+std::optional<Entry> EmuEepromInternal::read_entry(Page page, uint32_t offset)
 {
     const uint32_t block_offset = (offset / _write_block_size) * _write_block_size;
     const uint32_t within_block = offset - block_offset;
@@ -978,7 +979,7 @@ std::optional<Entry> EmuEeprom::read_entry(Page page, uint32_t offset)
     return deserialize_entry(std::span<const uint8_t>(buffer.data() + within_block, SERIALIZED_ENTRY_SIZE));
 }
 
-bool EmuEeprom::flush_write_block()
+bool EmuEepromInternal::flush_write_block()
 {
     if (!_write_block_dirty)
     {
@@ -1005,7 +1006,7 @@ bool EmuEeprom::flush_write_block()
     return true;
 }
 
-void EmuEeprom::clear_write_block()
+void EmuEepromInternal::clear_write_block()
 {
     std::fill(_write_block_buffer.begin(), _write_block_buffer.end(), ERASED_BYTE);
     _write_block_page    = Page::Page1;
@@ -1014,7 +1015,7 @@ void EmuEeprom::clear_write_block()
     _write_block_dirty   = false;
 }
 
-bool EmuEeprom::cache()
+bool EmuEepromInternal::cache()
 {
     Page valid_page;
 
@@ -1031,7 +1032,7 @@ bool EmuEeprom::cache()
     std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
     for (uint32_t read_offset = 0;
-         read_offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+         read_offset < _page_size;
          read_offset += _read_block_size)
     {
         std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
@@ -1087,7 +1088,7 @@ bool EmuEeprom::cache()
     return true;
 }
 
-bool EmuEeprom::flush()
+bool EmuEepromInternal::flush()
 {
     if (_cache_dirty)
     {

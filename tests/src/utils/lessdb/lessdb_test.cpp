@@ -27,7 +27,7 @@ namespace
 
     static constexpr int      CONCURRENT_ITERATIONS = 50;
     static constexpr int      CONCURRENT_TIMEOUT_MS = 5000;
-    static constexpr uint32_t EMUEEPROM_PAGE_SIZE   = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+    static constexpr uint32_t EMUEEPROM_PAGE_SIZE   = 4096;
 
     struct Partition
     {
@@ -48,9 +48,6 @@ namespace
     class EmuEepromFlashPageHwa : public zlibs::utils::emueeprom::Hwa
     {
         public:
-        static constexpr size_t PAGE_1_SIZE      = EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t PAGE_2_SIZE      = EMUEEPROM_PAGE_SIZE;
-        static constexpr size_t FACTORY_SIZE     = EMUEEPROM_PAGE_SIZE;
         static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
 
         bool init() override
@@ -121,7 +118,8 @@ namespace
                                                                 PARTITION_SIZE(factory_partition));
     };
 
-    static std::optional<uint8_t> emueeprom_read_byte(EmuEeprom& emu_eeprom, uint32_t address)
+    template<typename EmuEepromType>
+    static std::optional<uint8_t> emueeprom_read_byte(EmuEepromType& emu_eeprom, uint32_t address)
     {
         uint16_t data = 0;
 
@@ -133,14 +131,15 @@ namespace
         return static_cast<uint8_t>(data & 0xFFu);
     }
 
-    static bool emueeprom_write_byte(EmuEeprom& emu_eeprom, uint32_t address, uint8_t value)
+    template<typename EmuEepromType>
+    static bool emueeprom_write_byte(EmuEepromType& emu_eeprom, uint32_t address, uint8_t value)
     {
         return emu_eeprom.write(make_entry(static_cast<uint16_t>(address), value)) == WriteStatus::Ok;
     }
 
     struct LessDbTestLayout
     {
-        static constexpr uint32_t LESSDB_SIZE = 1021;
+        static constexpr uint32_t LESSDB_ADDRESS_COUNT = 1021;
 
         static constexpr size_t TEST_BLOCK_INDEX = 0;
 
@@ -477,14 +476,14 @@ namespace
                 return true;
             }
 
-            uint32_t size() override
+            uint32_t address_count() override
             {
-                return LessDbTestLayout::LESSDB_SIZE;
+                return LessDbTestLayout::LESSDB_ADDRESS_COUNT;
             }
 
             bool clear() override
             {
-                memset(_memoryArray, 0, LessDbTestLayout::LESSDB_SIZE);
+                memset(_memoryArray, 0, LessDbTestLayout::LESSDB_ADDRESS_COUNT);
                 return true;
             }
 
@@ -583,7 +582,7 @@ namespace
             std::function<bool(uint32_t address, uint32_t value, SectionParameterType type)>    _writeCallback;
 
             private:
-            uint8_t _memoryArray[LessDbTestLayout::LESSDB_SIZE];
+            uint8_t _memoryArray[LessDbTestLayout::LESSDB_ADDRESS_COUNT];
         };
     };
 
@@ -618,9 +617,9 @@ namespace
                 return _emu_eeprom.init();
             }
 
-            uint32_t size() override
+            uint32_t address_count() override
             {
-                return LessDbTestLayout::LESSDB_SIZE;
+                return LessDbTestLayout::LESSDB_ADDRESS_COUNT;
             }
 
             bool clear() override
@@ -630,7 +629,7 @@ namespace
                     return false;
                 }
 
-                for (uint32_t address = 0; address < LessDbTestLayout::LESSDB_SIZE; address++)
+                for (uint32_t address = 0; address < LessDbTestLayout::LESSDB_ADDRESS_COUNT; address++)
                 {
                     if (!emueeprom_write_byte(_emu_eeprom, address, 0))
                     {
@@ -757,8 +756,8 @@ namespace
             std::function<bool(uint32_t address, uint32_t value, SectionParameterType type)>    _writeCallback;
 
             private:
-            EmuEepromFlashPageHwa _page_hwa;
-            EmuEeprom             _emu_eeprom;
+            EmuEepromFlashPageHwa                                                                                           _page_hwa;
+            EmuEeprom<EMUEEPROM_PAGE_SIZE, EmuEepromFlashPageHwa::WRITE_BLOCK_SIZE, LessDbTestLayout::LESSDB_ADDRESS_COUNT> _emu_eeprom;
         };
     };
 
@@ -772,7 +771,7 @@ namespace
         {
             this->_hwa.assert_test_requirements();
             ASSERT_TRUE(this->_lessdb.init());
-            ASSERT_EQ(this->_lessdb.db_size(), LessDbTestLayout::LESSDB_SIZE);
+            ASSERT_EQ(this->_lessdb.address_count(), LessDbTestLayout::LESSDB_ADDRESS_COUNT);
             ASSERT_TRUE(this->_lessdb.set_layout(LessDbTestLayout::TEST_LAYOUT));
             ASSERT_TRUE(this->_lessdb.init_data(FactoryResetType::Full));
         }
@@ -1134,7 +1133,7 @@ TYPED_TEST(LessDbBackendsTest, ErrorCheck)
     // Try initializing the database with too many parameters.
     static constexpr auto OUT_OF_BOUNDS_SECTION = make_block(std::array<Section, 1>{
         Section{
-            TestFixture::LESSDB_SIZE + 1,
+            TestFixture::LESSDB_ADDRESS_COUNT + 1,
             SectionParameterType::Byte,
             PreserveSetting::Disable,
             AutoIncrementSetting::Disable,
@@ -1152,7 +1151,7 @@ TYPED_TEST(LessDbBackendsTest, ErrorCheck)
 
     // Try initializing the database with a start offset that pushes a valid layout out of bounds.
     const uint32_t layout_size    = LessDb::layout_size(TestFixture::TEST_LAYOUT);
-    const uint32_t exact_fit_base = TestFixture::LESSDB_SIZE - layout_size;
+    const uint32_t exact_fit_base = TestFixture::LESSDB_ADDRESS_COUNT - layout_size;
 
     ret = this->_lessdb.set_layout(TestFixture::TEST_LAYOUT, exact_fit_base);
     ASSERT_TRUE(ret);

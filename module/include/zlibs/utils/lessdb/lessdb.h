@@ -152,11 +152,11 @@ namespace zlibs::utils::lessdb
         }
 
         /**
-         * @brief Returns the total storage capacity of the underlying medium.
+         * @brief Returns the logical address capacity of the underlying medium.
          *
-         * @return Maximum database size in bytes.
+         * @return Number of logical addresses available to LessDB.
          */
-        uint32_t db_size() const;
+        uint32_t address_count() const;
 
         /**
          * @brief Writes default values to all sections in the active layout.

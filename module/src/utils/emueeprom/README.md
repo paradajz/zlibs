@@ -11,7 +11,6 @@ Public headers for this module are available in [`module/include/zlibs/utils/emu
 ### Configuration symbols
 
 - `CONFIG_ZLIBS_UTILS_EMUEEPROM`: enables the emulated EEPROM module.
-- `CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE`: sets the emulation page size, in bytes, exposed through the `Hwa` interface.
 
 ### Automatically selected symbols
 
@@ -30,7 +29,7 @@ This module does not automatically select additional Kconfig symbols.
 - `flush()` makes all pending state durable: RAM-only cached writes and any partially filled backend write block.
 - There is no dedicated page header block. Page status records use the reserved status address and are appended through the same entry log; after `format()`, the first entries written are the runtime page status records.
 - A few backend write blocks are kept out of the public logical address range so internal page-status records and page transfers have room to complete.
-- The RAM mirror grows with the configured page size, so larger flash pages also increase RAM usage.
+- The RAM mirror grows with the `EmuEeprom` logical address count, so expose only the address range users need.
 - `format()` initializes runtime pages only by default.
 - `format(true)` also erases the factory page.
 - `restore_from_factory()` copies a valid factory page into runtime page 1.
@@ -42,7 +41,6 @@ This module does not automatically select additional Kconfig symbols.
 
 ```conf
 CONFIG_ZLIBS_UTILS_EMUEEPROM=y
-CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE=2048
 ```
 
 ### `CMakeLists.txt`
@@ -63,10 +61,8 @@ using namespace zlibs::utils::emueeprom;
 class MyHwa : public Hwa
 {
     public:
+    static constexpr size_t PAGE_SIZE = 2048;
     static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
-    static constexpr size_t PAGE_1_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-    static constexpr size_t PAGE_2_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-    static constexpr size_t FACTORY_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
 
     bool init() override
     {
@@ -94,7 +90,7 @@ class MyHwa : public Hwa
 };
 
 MyHwa hwa;
-EmuEeprom eeprom(hwa);
+EmuEeprom<MyHwa::PAGE_SIZE, MyHwa::WRITE_BLOCK_SIZE> eeprom(hwa);
 
 eeprom.init();
 eeprom.write(make_entry(0, 0x1234));

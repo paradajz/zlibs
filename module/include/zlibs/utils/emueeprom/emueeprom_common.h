@@ -52,6 +52,43 @@ namespace zlibs::utils::emueeprom
     constexpr inline size_t SERIALIZED_ENTRY_SIZE = sizeof(Entry::value) + sizeof(Entry::address);
 
     /**
+     * @brief Internal block size used for bulk reads and buffered writes.
+     */
+    constexpr inline size_t INTERNAL_BLOCK_SIZE = 256;
+
+    /**
+     * @brief Number of backend write blocks reserved for internal records.
+     */
+    constexpr inline size_t MIN_INTERNAL_ENTRY_BLOCK_COUNT = 3;
+
+    /**
+     * @brief Calculates how many logical addresses can fit in one page.
+     *
+     * The result is also the exclusive upper bound for valid addresses: if this
+     * returns `N`, callers may use addresses `0` through `N - 1`.
+     *
+     * @param page_size EmuEEPROM page size in bytes.
+     * @param write_block_size Backend write-block size in bytes.
+     *
+     * @return Logical address count available to users.
+     */
+    constexpr size_t address_count_for(size_t page_size, size_t write_block_size)
+    {
+        const size_t page_entry_count          = page_size / SERIALIZED_ENTRY_SIZE;
+        const size_t entries_per_backend_block = write_block_size / SERIALIZED_ENTRY_SIZE;
+        const size_t internal_entry_count      = MIN_INTERNAL_ENTRY_BLOCK_COUNT * entries_per_backend_block;
+
+        if (page_entry_count <= internal_entry_count)
+        {
+            return 0;
+        }
+
+        const size_t address_count = page_entry_count - internal_entry_count;
+
+        return address_count > RESERVED_STATUS_ADDRESS ? RESERVED_STATUS_ADDRESS : address_count;
+    }
+
+    /**
      * @brief Creates one logical EEPROM entry.
      *
      * @param address Logical EEPROM address.

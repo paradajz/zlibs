@@ -20,7 +20,7 @@ using namespace zlibs::utils::emueeprom;
 
 namespace
 {
-    constexpr uint32_t PAGE_SIZE = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+    constexpr uint32_t PAGE_SIZE = 256;
 
     struct Partition
     {
@@ -41,9 +41,6 @@ namespace
     class HwaFlash : public Hwa
     {
         public:
-        static constexpr size_t PAGE_1_SIZE      = PAGE_SIZE;
-        static constexpr size_t PAGE_2_SIZE      = PAGE_SIZE;
-        static constexpr size_t FACTORY_SIZE     = PAGE_SIZE;
         static constexpr size_t WRITE_BLOCK_SIZE = sizeof(uint32_t);
 
         bool init() override
@@ -151,13 +148,15 @@ namespace
 
         HwaFlash _hwa;
     };
+
+    using EmuEepromFlashStorage = EmuEeprom<PAGE_SIZE, HwaFlash::WRITE_BLOCK_SIZE>;
 }    // namespace
 
 TEST_F(EmuEepromFlashTest, PageTransferPersistsLatestValueUsingZephyrFlashApi)
 {
-    EmuEeprom emu_eeprom(_hwa);
-    uint16_t  value       = 0;
-    uint16_t  write_value = 0;
+    EmuEepromFlashStorage emu_eeprom(_hwa);
+    uint16_t              value       = 0;
+    uint16_t              write_value = 0;
 
     ASSERT_TRUE(emu_eeprom.init());
     ASSERT_EQ(PageStatus::Valid, emu_eeprom.page_status(Page::Page1));
@@ -182,9 +181,9 @@ TEST_F(EmuEepromFlashTest, PageTransferPersistsLatestValueUsingZephyrFlashApi)
 
 TEST_F(EmuEepromFlashTest, RestoreFromFactoryCopiesFactoryPageUsingZephyrFlashApi)
 {
-    EmuEeprom emu_eeprom(_hwa);
-    uint16_t  value0 = 0;
-    uint16_t  value1 = 0;
+    EmuEepromFlashStorage emu_eeprom(_hwa);
+    uint16_t              value0 = 0;
+    uint16_t              value1 = 0;
 
     write_raw_page_status(Page::Factory, static_cast<uint16_t>(PageStatus::Valid));
     write_raw_flash_entry(Page::Factory, 0, 0, 0x1234);
@@ -201,8 +200,8 @@ TEST_F(EmuEepromFlashTest, RestoreFromFactoryCopiesFactoryPageUsingZephyrFlashAp
 
 TEST_F(EmuEepromFlashTest, RestoreFromFactoryFailsWhenFactoryPageStatusIsInvalid)
 {
-    EmuEeprom emu_eeprom(_hwa);
-    uint16_t  value = 0;
+    EmuEepromFlashStorage emu_eeprom(_hwa);
+    uint16_t              value = 0;
 
     ASSERT_TRUE(emu_eeprom.init());
     ASSERT_EQ(WriteStatus::Ok, emu_eeprom.write(make_entry(0, 0x2468)));
