@@ -190,6 +190,21 @@ TEST_F(ThreadsTest, WorkqueueHandleIsSingletonAndExecutesQueuedWork)
     ASSERT_EQ(2, work_executions.load(std::memory_order_relaxed));
 }
 
+TEST_F(ThreadsTest, KworkDelayableReportsPendingState)
+{
+    misc::KworkDelayable work([]()
+                              {
+                              });
+
+    ASSERT_FALSE(work.is_pending());
+
+    ASSERT_TRUE(work.reschedule(WAIT_TIME_MS));
+    ASSERT_TRUE(work.is_pending());
+
+    work.cancel();
+    ASSERT_FALSE(work.is_pending());
+}
+
 TEST_F(ThreadsTest, KworkDelayableCancelWaitsForRunningCallbackToComplete)
 {
     k_sem callback_started   = {};

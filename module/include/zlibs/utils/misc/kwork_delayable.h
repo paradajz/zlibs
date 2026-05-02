@@ -123,6 +123,16 @@ namespace zlibs::utils::misc
             k_work_cancel_delayable_sync(&_e_kwork.member, &sync);
         }
 
+        /**
+         * @brief Returns whether the delayable work item is pending or running.
+         *
+         * @return `true` when the work item is in a non-idle state, otherwise `false`.
+         */
+        bool is_pending() const
+        {
+            return k_work_delayable_is_pending(&_e_kwork.member);
+        }
+
         private:
         void init_delayable_work()
         {
