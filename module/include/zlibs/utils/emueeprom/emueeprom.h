@@ -43,6 +43,7 @@ namespace zlibs::utils::emueeprom
         explicit EmuEeprom(ConcreteHwa& hwa)
             : _hwa(hwa)
             , _write_block_size(ConcreteHwa::WRITE_BLOCK_SIZE)
+            , _read_block_size(INTERNAL_BLOCK_SIZE)
             , _max_address(static_cast<uint16_t>(max_exclusive_address_for(ConcreteHwa::WRITE_BLOCK_SIZE)))
             , _entries_per_block(ConcreteHwa::WRITE_BLOCK_SIZE / SERIALIZED_ENTRY_SIZE)
         {
@@ -62,10 +63,14 @@ namespace zlibs::utils::emueeprom
                           "EmuEeprom write block must be at least one entry wide.");
             static_assert((ConcreteHwa::WRITE_BLOCK_SIZE % SERIALIZED_ENTRY_SIZE) == 0,
                           "EmuEeprom write block must be a multiple of the serialized entry size.");
-            static_assert((CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE % ConcreteHwa::WRITE_BLOCK_SIZE) == 0,
-                          "EmuEeprom page size must be a multiple of the backend write block.");
-            static_assert(ConcreteHwa::WRITE_BLOCK_SIZE <= MAX_WRITE_BLOCK_SIZE,
-                          "EmuEeprom backend write block exceeds internal buffer capacity.");
+            static_assert(ConcreteHwa::WRITE_BLOCK_SIZE <= INTERNAL_BLOCK_SIZE,
+                          "EmuEeprom backend write block exceeds internal block size.");
+            static_assert((INTERNAL_BLOCK_SIZE % ConcreteHwa::WRITE_BLOCK_SIZE) == 0,
+                          "EmuEeprom internal block size must be a multiple of the backend write block.");
+            static_assert((CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE % INTERNAL_BLOCK_SIZE) == 0,
+                          "EmuEeprom page size must be a multiple of the internal block size.");
+            static_assert(has_logical_address_space_for(ConcreteHwa::WRITE_BLOCK_SIZE),
+                          "EmuEeprom page size must leave room for at least one logical address.");
         }
 
         /**
@@ -182,7 +187,7 @@ namespace zlibs::utils::emueeprom
         using EntryAddress = decltype(Entry::address);
         using EntryValue   = decltype(Entry::value);
 
-        static constexpr size_t MAX_WRITE_BLOCK_SIZE           = 256;
+        static constexpr size_t INTERNAL_BLOCK_SIZE            = 256;
         static constexpr size_t MIN_INTERNAL_ENTRY_BLOCK_COUNT = 3;
         static constexpr size_t MAX_CACHE_ENTRY_COUNT =
             CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE / SERIALIZED_ENTRY_SIZE;
@@ -197,10 +202,11 @@ namespace zlibs::utils::emueeprom
 
         Hwa&                                        _hwa;
         const size_t                                _write_block_size;
+        const size_t                                _read_block_size;
         const uint16_t                              _max_address;
         const size_t                                _entries_per_block;
         std::array<uint16_t, MAX_CACHE_ENTRY_COUNT> _cache                   = {};
-        std::array<uint8_t, MAX_WRITE_BLOCK_SIZE>   _write_block_buffer      = {};
+        std::array<uint8_t, INTERNAL_BLOCK_SIZE>    _write_block_buffer      = {};
         std::array<PageStatus, 3>                   _page_status_cache       = { PageStatus::Erased, PageStatus::Erased, PageStatus::Erased };
         NextWriteOffsetCache                        _next_write_offset_cache = {};
         Page                                        _write_block_page        = Page::Page1;
@@ -229,9 +235,28 @@ namespace zlibs::utils::emueeprom
         {
             constexpr size_t PAGE_ENTRY_COUNT          = CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE / SERIALIZED_ENTRY_SIZE;
             const size_t     entries_per_backend_block = write_block_size / SERIALIZED_ENTRY_SIZE;
-            const size_t     max_exclusive_address     = PAGE_ENTRY_COUNT - (MIN_INTERNAL_ENTRY_BLOCK_COUNT * entries_per_backend_block);
+            const size_t     internal_entry_count      = MIN_INTERNAL_ENTRY_BLOCK_COUNT * entries_per_backend_block;
+
+            if (PAGE_ENTRY_COUNT <= internal_entry_count)
+            {
+                return 0;
+            }
+
+            const size_t max_exclusive_address = PAGE_ENTRY_COUNT - internal_entry_count;
 
             return max_exclusive_address > RESERVED_STATUS_ADDRESS ? RESERVED_STATUS_ADDRESS : max_exclusive_address;
+        }
+
+        /**
+         * @brief Checks that page size leaves room for user data after internal records.
+         *
+         * @param write_block_size Backend write-block size in bytes.
+         *
+         * @return `true` when at least one logical address remains available.
+         */
+        static constexpr bool has_logical_address_space_for(size_t write_block_size)
+        {
+            return max_exclusive_address_for(write_block_size) > 0;
         }
 
         /**
@@ -271,11 +296,10 @@ namespace zlibs::utils::emueeprom
          * @brief Finds the next erased backend write block in a page.
          *
          * @param page Page to scan.
-         * @param offset Reference populated with the erased block offset on success.
          *
-         * @return `true` when an erased block is found, otherwise `false`.
+         * @return Erased block offset, or an empty optional when no free block is found.
          */
-        bool find_next_free_offset(Page page, uint32_t& offset);
+        std::optional<uint32_t> find_next_free_offset(Page page);
 
         /**
          * @brief Refreshes one cached page status from flash.

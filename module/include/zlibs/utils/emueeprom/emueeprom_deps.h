@@ -54,8 +54,8 @@ namespace zlibs::utils::emueeprom
         /**
          * @brief Reads bytes at the given page offset.
          *
-         * Implementations define their accepted read size and alignment using
-         * their `WRITE_BLOCK_SIZE` constant.
+         * Reads must accept offsets aligned to `WRITE_BLOCK_SIZE`; the requested
+         * size can be one or more complete write blocks.
          *
          * @param page Target page role.
          * @param offset Byte offset within the page.

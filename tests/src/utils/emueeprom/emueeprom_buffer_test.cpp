@@ -7,6 +7,7 @@
 
 #include "zlibs/utils/emueeprom/emueeprom.h"
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <span>
@@ -98,13 +99,15 @@ namespace
 
             const auto& page_data = page_array.at(static_cast<size_t>(page));
 
-            if ((data.size() != WRITE_BLOCK_SIZE) ||
+            if ((data.empty()) ||
+                ((data.size() % WRITE_BLOCK_SIZE) != 0) ||
                 ((offset % WRITE_BLOCK_SIZE) != 0) ||
                 ((offset + data.size()) > page_data.size()))
             {
                 return false;
             }
 
+            max_read_size = std::max(max_read_size, data.size());
             std::copy(page_data.begin() + offset, page_data.begin() + offset + data.size(), data.begin());
             return true;
         }
@@ -160,6 +163,7 @@ namespace
         std::optional<uint32_t>                                                             fail_write_offset  = {};
         std::array<std::array<uint8_t, CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE>, PAGE_COUNT> page_array         = {};
         size_t                                                                              page_erase_counter = 0;
+        size_t                                                                              max_read_size      = 0;
 
         private:
         bool should_fail_read(Page page, uint32_t offset) const
@@ -247,6 +251,19 @@ TEST_F(EmuEepromTest, ReadNonExisting)
     ASSERT_EQ(ReadStatus::NoVariable, _emu_eeprom.read(0, value));
 }
 
+TEST_F(EmuEepromTest, StartupScansUseBulkReads)
+{
+    HwaTest   hwa;
+    EmuEeprom emu_eeprom(hwa);
+
+    hwa.erase_raw_page(Page::Page1);
+    hwa.erase_raw_page(Page::Page2);
+    hwa.erase_raw_page(Page::Factory);
+
+    ASSERT_TRUE(emu_eeprom.init());
+    ASSERT_GT(hwa.max_read_size, HwaTest::WRITE_BLOCK_SIZE);
+}
+
 TEST_F(EmuEepromWriteBlockTest, FourByteBackendUsesFourByteHeader)
 {
     HwaTest   hwa;
@@ -299,6 +316,22 @@ TEST_F(EmuEepromWriteBlockTest, HalfFullBackendBlockIsReadableButDurableOnlyAfte
     assert_entry_eq(make_entry(0, 0x1111),
                     _hwa.raw_read_entry(Page::Page1, first_data_offset()));
     ASSERT_EQ(0xFFFFFFFFu, _hwa.raw_read_32(Page::Page1, first_data_offset() + sizeof(uint32_t)));
+}
+
+TEST_F(EmuEepromWriteBlockTest, ReinitContinuesAfterFlushedPartialBackendBlock)
+{
+    ASSERT_EQ(WriteStatus::Ok, _emu_eeprom.write(make_entry(0, 0x1111)));
+    ASSERT_TRUE(_emu_eeprom.flush());
+
+    ASSERT_TRUE(_emu_eeprom.init());
+    ASSERT_EQ(WriteStatus::Ok, _emu_eeprom.write(make_entry(1, 0x2222)));
+    ASSERT_TRUE(_emu_eeprom.flush());
+
+    assert_entry_eq(make_entry(0, 0x1111),
+                    _hwa.raw_read_entry(Page::Page1, first_data_offset()));
+    ASSERT_EQ(0xFFFFFFFFu, _hwa.raw_read_32(Page::Page1, first_data_offset() + sizeof(uint32_t)));
+    assert_entry_eq(make_entry(1, 0x2222),
+                    _hwa.raw_read_entry(Page::Page1, first_data_offset() + HwaTest8::WRITE_BLOCK_SIZE));
 }
 
 TEST_F(EmuEepromWriteBlockTest, CacheOnlyWritesPersistLatestValuesOnFlush)

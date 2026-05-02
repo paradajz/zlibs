@@ -75,7 +75,8 @@ namespace
         {
             const auto& partition = partition_for(page);
 
-            if ((data.size() != WRITE_BLOCK_SIZE) ||
+            if ((data.empty()) ||
+                ((data.size() % WRITE_BLOCK_SIZE) != 0) ||
                 ((offset % WRITE_BLOCK_SIZE) != 0) ||
                 ((offset + data.size()) > partition.size))
             {

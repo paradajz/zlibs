@@ -298,7 +298,7 @@ bool EmuEeprom::store_to_factory()
 
     set_cached_page_status(Page::Factory, PageStatus::Erased);
 
-    std::array<uint8_t, MAX_WRITE_BLOCK_SIZE> buffer = {};
+    std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
     for (uint32_t offset = 0; offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE; offset += _write_block_size)
     {
@@ -357,7 +357,7 @@ bool EmuEeprom::restore_from_factory()
     std::fill(_cache.begin(), _cache.end(), ERASED_VALUE);
     _cache_dirty = false;
 
-    std::array<uint8_t, MAX_WRITE_BLOCK_SIZE> buffer = {};
+    std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
     for (uint32_t offset = 0; offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE; offset += _write_block_size)
     {
@@ -642,30 +642,34 @@ WriteStatus EmuEeprom::write_entry(Page page, uint32_t offset, Entry entry)
     return WriteStatus::Ok;
 }
 
-bool EmuEeprom::find_next_free_offset(Page page, uint32_t& offset)
+std::optional<uint32_t> EmuEeprom::find_next_free_offset(Page page)
 {
-    std::array<uint8_t, MAX_WRITE_BLOCK_SIZE> buffer = {};
+    std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
-    for (uint32_t write_offset = 0;
-         write_offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-         write_offset += _write_block_size)
+    for (uint32_t read_offset = 0;
+         read_offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+         read_offset += _read_block_size)
     {
         std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
-        auto block = std::span<uint8_t>(buffer.data(), _write_block_size);
+        auto read_block = std::span<uint8_t>(buffer.data(), _read_block_size);
 
-        if (!_hwa.read(page, write_offset, block))
+        if (!_hwa.read(page, read_offset, read_block))
         {
-            return false;
+            return {};
         }
 
-        if (all_erased(block))
+        for (uint32_t within_read_block = 0; within_read_block < _read_block_size; within_read_block += _write_block_size)
         {
-            offset = write_offset;
-            return true;
+            const auto write_block = std::span<const uint8_t>(buffer.data() + within_read_block, _write_block_size);
+
+            if (all_erased(write_block))
+            {
+                return read_offset + within_read_block;
+            }
         }
     }
 
-    return false;
+    return {};
 }
 
 WriteStatus EmuEeprom::page_transfer()
@@ -784,27 +788,51 @@ bool EmuEeprom::refresh_page_status(Page page)
         }
     }
 
+    std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
+
     while (true)
     {
-        const auto entry = read_entry(page, offset);
+        const uint32_t read_block_offset = (offset / _read_block_size) * _read_block_size;
 
-        if (entry.has_value() && (entry.value().address == RESERVED_STATUS_ADDRESS))
+        std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
+
+        if (!_hwa.read(page, read_block_offset, std::span<uint8_t>(buffer.data(), _read_block_size)))
         {
-            const auto status = deserialize_page_status(entry.value().value);
-
-            if (status.has_value())
-            {
-                set_cached_page_status(page, status.value());
-                return true;
-            }
+            return false;
         }
 
-        if (offset == 0)
+        uint32_t within_read_block = offset - read_block_offset;
+
+        while (true)
+        {
+            const auto entry_data = std::span<const uint8_t>(buffer.data() + within_read_block, SERIALIZED_ENTRY_SIZE);
+            const auto entry      = deserialize_entry(entry_data);
+
+            if (entry.address == RESERVED_STATUS_ADDRESS)
+            {
+                const auto status = deserialize_page_status(entry.value);
+
+                if (status.has_value())
+                {
+                    set_cached_page_status(page, status.value());
+                    return true;
+                }
+            }
+
+            if (within_read_block < SERIALIZED_ENTRY_SIZE)
+            {
+                break;
+            }
+
+            within_read_block -= SERIALIZED_ENTRY_SIZE;
+        }
+
+        if (read_block_offset == 0)
         {
             break;
         }
 
-        offset -= SERIALIZED_ENTRY_SIZE;
+        offset = read_block_offset - SERIALIZED_ENTRY_SIZE;
     }
 
     set_cached_page_status(page, PageStatus::Erased);
@@ -823,24 +851,29 @@ void EmuEeprom::set_cached_page_status(Page page, PageStatus status)
 
 bool EmuEeprom::refresh_next_write_offset(Page page)
 {
-    std::array<uint8_t, MAX_WRITE_BLOCK_SIZE> buffer = {};
+    std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
-    for (uint32_t offset = 0;
-         offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-         offset += _write_block_size)
+    for (uint32_t read_offset = 0;
+         read_offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+         read_offset += _read_block_size)
     {
         std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
-        auto block = std::span<uint8_t>(buffer.data(), _write_block_size);
+        auto read_block = std::span<uint8_t>(buffer.data(), _read_block_size);
 
-        if (!_hwa.read(page, offset, block))
+        if (!_hwa.read(page, read_offset, read_block))
         {
             return false;
         }
 
-        if (all_erased(block))
+        for (uint32_t within_read_block = 0; within_read_block < _read_block_size; within_read_block += _write_block_size)
         {
-            set_cached_next_write_offset(page, offset);
-            return true;
+            const auto write_block = std::span<const uint8_t>(buffer.data() + within_read_block, _write_block_size);
+
+            if (all_erased(write_block))
+            {
+                set_cached_next_write_offset(page, read_offset + within_read_block);
+                return true;
+            }
         }
     }
 
@@ -868,14 +901,14 @@ bool EmuEeprom::write_page_status(Page page, PageStatus status)
         return false;
     }
 
-    uint32_t offset = 0;
+    const auto offset = find_next_free_offset(page);
 
-    if (!find_next_free_offset(page, offset))
+    if (!offset.has_value())
     {
         return false;
     }
 
-    const auto write_status = write_entry(page, offset, make_entry(RESERVED_STATUS_ADDRESS, serialize_page_status(status)));
+    const auto write_status = write_entry(page, offset.value(), make_entry(RESERVED_STATUS_ADDRESS, serialize_page_status(status)));
 
     if (write_status != WriteStatus::Ok)
     {
@@ -891,7 +924,7 @@ bool EmuEeprom::write_page_status(Page page, PageStatus status)
 
     if (cached_write_offset.page == page)
     {
-        const uint32_t next_offset = std::min(static_cast<uint32_t>(((offset / _write_block_size) * _write_block_size) + _write_block_size),
+        const uint32_t next_offset = std::min(static_cast<uint32_t>(((offset.value() / _write_block_size) * _write_block_size) + _write_block_size),
                                               static_cast<uint32_t>(CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE));
 
         set_cached_next_write_offset(page, next_offset);
@@ -934,7 +967,7 @@ std::optional<Entry> EmuEeprom::read_entry(Page page, uint32_t offset)
         return {};
     }
 
-    std::array<uint8_t, MAX_WRITE_BLOCK_SIZE> buffer = {};
+    std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
     std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
 
     if (!_hwa.read(page, block_offset, std::span<uint8_t>(buffer.data(), _write_block_size)))
@@ -995,51 +1028,58 @@ bool EmuEeprom::cache()
         return false;
     }
 
-    std::array<uint8_t, MAX_WRITE_BLOCK_SIZE> buffer = {};
+    std::array<uint8_t, INTERNAL_BLOCK_SIZE> buffer = {};
 
-    for (uint32_t block_offset = 0;
-         block_offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
-         block_offset += _write_block_size)
+    for (uint32_t read_offset = 0;
+         read_offset < CONFIG_ZLIBS_UTILS_EMUEEPROM_PAGE_SIZE;
+         read_offset += _read_block_size)
     {
         std::fill(buffer.begin(), buffer.end(), ERASED_BYTE);
-        auto block = std::span<uint8_t>(buffer.data(), _write_block_size);
+        auto read_block = std::span<uint8_t>(buffer.data(), _read_block_size);
 
-        if (!_hwa.read(valid_page, block_offset, block))
+        if (!_hwa.read(valid_page, read_offset, read_block))
         {
             return false;
         }
 
-        if (all_erased(block))
+        for (uint32_t within_read_block = 0; within_read_block < _read_block_size; within_read_block += _write_block_size)
         {
-            set_cached_next_write_offset(valid_page, block_offset);
-            break;
-        }
+            const auto write_block = std::span<const uint8_t>(buffer.data() + within_read_block, _write_block_size);
 
-        set_cached_next_write_offset(valid_page, block_offset + _write_block_size);
-
-        for (size_t entry = 0; entry < _entries_per_block; entry++)
-        {
-            const size_t within_block = entry * SERIALIZED_ENTRY_SIZE;
-            const auto   entry_data   = std::span<const uint8_t>(buffer.data() + within_block, SERIALIZED_ENTRY_SIZE);
-
-            if (all_erased(entry_data))
+            if (all_erased(write_block))
             {
-                continue;
+                set_cached_next_write_offset(valid_page, read_offset + within_read_block);
+                clear_write_block();
+                return true;
             }
 
-            const auto decoded = deserialize_entry(entry_data);
+            set_cached_next_write_offset(valid_page, read_offset + within_read_block + _write_block_size);
 
-            if (decoded.address == RESERVED_STATUS_ADDRESS)
+            for (size_t entry = 0; entry < _entries_per_block; entry++)
             {
-                continue;
-            }
+                const size_t within_write_block = entry * SERIALIZED_ENTRY_SIZE;
+                const auto   entry_data         = std::span<const uint8_t>(buffer.data() + within_read_block + within_write_block,
+                                                                           SERIALIZED_ENTRY_SIZE);
 
-            if (decoded.address >= max_address())
-            {
-                return false;
-            }
+                if (all_erased(entry_data))
+                {
+                    continue;
+                }
 
-            _cache[decoded.address] = decoded.value;
+                const auto decoded = deserialize_entry(entry_data);
+
+                if (decoded.address == RESERVED_STATUS_ADDRESS)
+                {
+                    continue;
+                }
+
+                if (decoded.address >= max_address())
+                {
+                    return false;
+                }
+
+                _cache[decoded.address] = decoded.value;
+            }
         }
     }
 
