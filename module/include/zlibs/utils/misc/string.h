@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "numeric.h"
+
 #include <algorithm>
 #include <array>
 #include <string>
@@ -101,9 +103,8 @@ namespace zlibs::utils::misc
     template<int V>
     constexpr auto int_to_string()
     {
-        constexpr int  DECIMAL_BASE = 10;
-        constexpr bool IS_NEGATIVE  = V < 0;
-        constexpr int  ABSOLUTE     = IS_NEGATIVE ? -V : V;
+        constexpr bool IS_NEGATIVE = V < 0;
+        constexpr int  ABSOLUTE    = IS_NEGATIVE ? -V : V;
 
         constexpr int DIGITS = []()
         {

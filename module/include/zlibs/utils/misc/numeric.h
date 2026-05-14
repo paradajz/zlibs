@@ -9,6 +9,9 @@
 
 namespace zlibs::utils::misc
 {
+    /** @brief Base used for decimal digit conversion. */
+    constexpr inline uint32_t DECIMAL_BASE = 10U;
+
     /**
      * @brief Constrains a value to the closed interval `[low, high]`.
      *

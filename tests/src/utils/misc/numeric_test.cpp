@@ -20,6 +20,7 @@ namespace
     static_assert(misc::map_range(50, 0, 100, 0, 10) == 5);
     static_assert(misc::map_range(15, 0, 10, 0, 10) == 10);
     static_assert(misc::round_to_nearest(13U, 5U) == 15U);
+    static_assert(misc::DECIMAL_BASE == 10U);
 }    // namespace
 
 class NumericTest : public Test
