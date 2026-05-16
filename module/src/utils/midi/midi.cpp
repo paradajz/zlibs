@@ -8,6 +8,19 @@
 
 using namespace zlibs::utils::midi;
 
+bool Base::enable_thru_route([[maybe_unused]] Thru& destination)
+{
+    return true;
+}
+
+void Base::disable_thru_route([[maybe_unused]] Thru& destination)
+{}
+
+bool Base::has_thru_bypass([[maybe_unused]] Thru& destination)
+{
+    return false;
+}
+
 bool Base::init()
 {
     if (_initialized)
@@ -15,7 +28,7 @@ bool Base::init()
         return true;
     }
 
-    if (_transport.init())
+    if ((_transport != nullptr) && _transport->init())
     {
         _initialized = true;
         return true;
@@ -32,7 +45,23 @@ bool Base::deinit()
     }
 
     _initialized = false;
-    return _transport.deinit();
+
+    {
+        const zlibs::utils::misc::LockGuard lock(_thru_mutex);
+
+        for (auto& interface : _thru_interfaces)
+        {
+            if (interface == nullptr)
+            {
+                continue;
+            }
+
+            disable_thru_route(*interface);
+            interface = nullptr;
+        }
+    }
+
+    return (_transport != nullptr) && _transport->deinit();
 }
 
 bool Base::initialized()
@@ -40,15 +69,25 @@ bool Base::initialized()
     return _initialized;
 }
 
+bool Base::supported()
+{
+    return (_transport != nullptr) && _transport->supported();
+}
+
 bool Base::send(const midi_ump& packet)
 {
     const zlibs::utils::misc::LockGuard lock(_tx_mutex);
-    return _transport.write(packet);
+    return (_transport != nullptr) && _transport->write(packet);
 }
 
 std::optional<midi_ump> Base::read()
 {
-    auto packet = _transport.read();
+    if (_transport == nullptr)
+    {
+        return {};
+    }
+
+    auto packet = _transport->read();
 
     if (!packet.has_value())
     {
@@ -78,27 +117,50 @@ void Base::thru(const midi_ump& packet)
             continue;
         }
 
+        if (has_thru_bypass(*interface))
+        {
+            continue;
+        }
+
         interface->write(packet);
     }
 }
 
-void Base::register_thru_interface(Thru& interface_ref)
+bool Base::register_thru_interface(Thru& interface_ref)
 {
     const zlibs::utils::misc::LockGuard lock(_thru_mutex);
+
+    for (const auto* interface : _thru_interfaces)
+    {
+        if (interface == &interface_ref)
+        {
+            return true;
+        }
+    }
+
+    if (!enable_thru_route(interface_ref))
+    {
+        return false;
+    }
 
     for (size_t i = 0; i < _thru_interfaces.size(); i++)
     {
         if (_thru_interfaces.at(i) == nullptr)
         {
             _thru_interfaces[i] = &interface_ref;
-            break;
+            return true;
         }
     }
+
+    disable_thru_route(interface_ref);
+    return false;
 }
 
 void Base::unregister_thru_interface(Thru& interface_ref)
 {
     const zlibs::utils::misc::LockGuard lock(_thru_mutex);
+
+    disable_thru_route(interface_ref);
 
     for (size_t i = 0; i < _thru_interfaces.size(); i++)
     {

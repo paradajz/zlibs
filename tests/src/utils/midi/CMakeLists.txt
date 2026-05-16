@@ -8,6 +8,7 @@ target_sources(app
     PRIVATE
     midi_base_test.cpp
     midi_common_test.cpp
+    midi_transport_null_test.cpp
     midi_transport_ble_test.cpp
     midi_transport_serial_test.cpp
     midi_transport_usb_test.cpp

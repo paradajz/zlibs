@@ -8,16 +8,18 @@
 
 #include "transport_common.h"
 #include "zlibs/utils/midi/midi.h"
+#include "zlibs/utils/midi/transport/null/transport_null.h"
 
 #include <array>
 #include <cstddef>
 
 namespace zlibs::utils::midi::ble
 {
+#ifdef CONFIG_ZLIBS_UTILS_MIDI_TRANSPORT_BLE
     /**
      * @brief BLE transport implementation of the MIDI base engine.
      */
-    class Ble : public Base
+    class Ble : public virtual Base
     {
         public:
         /**
@@ -26,10 +28,11 @@ namespace zlibs::utils::midi::ble
          * @param hwa Hardware abstraction used to send and receive encoded BLE-MIDI packets.
          */
         explicit Ble(Hwa& hwa)
-            : Base(_transport)
-            , _transport(*this)
+            : _transport(*this)
             , _hwa(hwa)
-        {}
+        {
+            bind_transport(_transport);
+        }
 
         private:
         /**
@@ -87,4 +90,7 @@ namespace zlibs::utils::midi::ble
 
         Hwa& _hwa;
     };
+#else
+    using Ble = midi::Null;
+#endif
 }    // namespace zlibs::utils::midi::ble

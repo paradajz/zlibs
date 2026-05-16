@@ -8,13 +8,15 @@
 
 #include "transport_common.h"
 #include "zlibs/utils/midi/midi.h"
+#include "zlibs/utils/midi/transport/null/transport_null.h"
 
 namespace zlibs::utils::midi::serial
 {
+#ifdef CONFIG_ZLIBS_UTILS_MIDI_TRANSPORT_SERIAL
     /**
      * @brief Serial transport implementation of the MIDI base engine.
      */
-    class Serial : public Base
+    class Serial : public virtual Base
     {
         public:
         /**
@@ -23,10 +25,11 @@ namespace zlibs::utils::midi::serial
          * @param hwa Hardware abstraction used to send and receive serial MIDI bytes.
          */
         explicit Serial(Hwa& hwa)
-            : Base(_transport)
-            , _transport(*this)
+            : _transport(*this)
             , _hwa(hwa)
-        {}
+        {
+            bind_transport(_transport);
+        }
 
         private:
         /**
@@ -65,4 +68,7 @@ namespace zlibs::utils::midi::serial
 
         Hwa& _hwa;
     };
+#else
+    using Serial = midi::Null;
+#endif
 }    // namespace zlibs::utils::midi::serial

@@ -8,6 +8,7 @@
 #include "zlibs/utils/midi/midi.h"
 #include "zlibs/utils/threads/threads.h"
 
+#include <array>
 #include <atomic>
 #include <deque>
 #include <vector>
@@ -50,6 +51,11 @@ namespace
             return deinit_result;
         }
 
+        bool supported() override
+        {
+            return supported_result;
+        }
+
         bool write([[maybe_unused]] const midi_ump& packet) override
         {
             tx_packets.push_back(packet);
@@ -68,9 +74,10 @@ namespace
             return packet;
         }
 
-        bool init_result   = true;
-        bool deinit_result = true;
-        bool write_result  = true;
+        bool init_result      = true;
+        bool deinit_result    = true;
+        bool supported_result = true;
+        bool write_result     = true;
 
         int                   init_count   = 0;
         int                   deinit_count = 0;
@@ -90,6 +97,43 @@ namespace
         std::vector<midi_ump> tx_packets = {};
     };
 
+    class FakeMidi : public Base
+    {
+        public:
+        explicit FakeMidi(Transport& transport)
+        {
+            bind_transport(transport);
+        }
+
+        bool enable_thru_route(Thru& destination) override
+        {
+            enabled_to = &destination;
+            enable_count++;
+            return enable_result;
+        }
+
+        void disable_thru_route(Thru& destination) override
+        {
+            disabled_to = &destination;
+            disable_count++;
+        }
+
+        bool has_thru_bypass(Thru& destination) override
+        {
+            bypass_checked_to = &destination;
+            return bypass;
+        }
+
+        bool enable_result = true;
+        bool bypass        = false;
+
+        int   enable_count      = 0;
+        int   disable_count     = 0;
+        Thru* enabled_to        = nullptr;
+        Thru* disabled_to       = nullptr;
+        Thru* bypass_checked_to = nullptr;
+    };
+
     class MidiBaseTest : public Test
     {
         protected:
@@ -104,7 +148,7 @@ namespace
         }
 
         FakeTransport _transport;
-        Base          _midi = Base(_transport);
+        FakeMidi      _midi = FakeMidi(_transport);
     };
 
     struct SendThreadContext
@@ -156,10 +200,19 @@ TEST_F(MidiBaseTest, ThruInterfaceAccessorReturnsUnderlyingTransport)
     EXPECT_EQ(static_cast<Thru*>(&_transport), &_midi.thru_interface());
 }
 
+TEST_F(MidiBaseTest, SupportedReturnsTransportSupportState)
+{
+    _transport.supported_result = true;
+    EXPECT_TRUE(_midi.supported());
+
+    _transport.supported_result = false;
+    EXPECT_FALSE(_midi.supported());
+}
+
 TEST_F(MidiBaseTest, ThruInterfaceCanBeRegisteredAndUnregistered)
 {
     FakeTransport other_transport;
-    Base          other_midi(other_transport);
+    FakeMidi      other_midi(other_transport);
 
     _midi.register_thru_interface(other_midi.thru_interface());
     _transport.rx_packets.push_back(midi1_channel_voice_ump(0, 0x90, 0x3C, 0x64));
@@ -172,6 +225,122 @@ TEST_F(MidiBaseTest, ThruInterfaceCanBeRegisteredAndUnregistered)
 
     ASSERT_TRUE(_midi.read().has_value());
     ASSERT_EQ(1, other_transport.tx_packets.size());
+}
+
+TEST_F(MidiBaseTest, RegisterThruInterfaceCallsEnableHook)
+{
+    FakeThru thru;
+
+    ASSERT_TRUE(_midi.register_thru_interface(thru));
+
+    EXPECT_EQ(1, _midi.enable_count);
+    EXPECT_EQ(&thru, _midi.enabled_to);
+}
+
+TEST_F(MidiBaseTest, RegisterThruInterfaceIsIdempotent)
+{
+    FakeThru thru;
+
+    ASSERT_TRUE(_midi.register_thru_interface(thru));
+    ASSERT_TRUE(_midi.register_thru_interface(thru));
+
+    _transport.rx_packets.push_back(midi1_channel_voice_ump(0, 0x90, 0x3C, 0x64));
+
+    ASSERT_TRUE(_midi.read().has_value());
+    EXPECT_EQ(1, thru.tx_packets.size());
+    EXPECT_EQ(1, _midi.enable_count);
+}
+
+TEST_F(MidiBaseTest, RegisterThruInterfaceReturnsFalseWhenSourceEnableHookFails)
+{
+    FakeThru thru;
+
+    _midi.enable_result = false;
+
+    EXPECT_FALSE(_midi.register_thru_interface(thru));
+
+    _transport.rx_packets.push_back(midi1_channel_voice_ump(0, 0x90, 0x3C, 0x64));
+
+    ASSERT_TRUE(_midi.read().has_value());
+    EXPECT_TRUE(thru.tx_packets.empty());
+    EXPECT_EQ(1, _midi.enable_count);
+}
+
+TEST_F(MidiBaseTest, ReadSkipsSoftwareForwardingWhenSourceHasBypass)
+{
+    FakeThru thru;
+
+    _midi.bypass = true;
+
+    ASSERT_TRUE(_midi.register_thru_interface(thru));
+
+    _transport.rx_packets.push_back(midi1_channel_voice_ump(0, 0x90, 0x3C, 0x64));
+
+    ASSERT_TRUE(_midi.read().has_value());
+    EXPECT_TRUE(thru.tx_packets.empty());
+    EXPECT_EQ(&thru, _midi.bypass_checked_to);
+}
+
+TEST_F(MidiBaseTest, SourceBypassCanChangeAfterRegistration)
+{
+    FakeThru thru;
+
+    _midi.bypass = true;
+
+    ASSERT_TRUE(_midi.register_thru_interface(thru));
+
+    _transport.rx_packets.push_back(midi1_channel_voice_ump(0, 0x90, 0x3C, 0x64));
+
+    ASSERT_TRUE(_midi.read().has_value());
+    EXPECT_TRUE(thru.tx_packets.empty());
+
+    _midi.bypass = false;
+    _transport.rx_packets.push_back(midi1_channel_voice_ump(0, 0x90, 0x3D, 0x65));
+
+    ASSERT_TRUE(_midi.read().has_value());
+    EXPECT_EQ(1, thru.tx_packets.size());
+}
+
+TEST_F(MidiBaseTest, UnregisterThruInterfaceCallsDisableHook)
+{
+    FakeThru thru;
+
+    ASSERT_TRUE(_midi.register_thru_interface(thru));
+    _midi.unregister_thru_interface(thru);
+
+    EXPECT_EQ(1, _midi.disable_count);
+    EXPECT_EQ(&thru, _midi.disabled_to);
+}
+
+TEST_F(MidiBaseTest, DeinitClearsRegisteredThruInterfaces)
+{
+    FakeThru thru;
+
+    ASSERT_TRUE(_midi.register_thru_interface(thru));
+    ASSERT_TRUE(_midi.deinit());
+
+    EXPECT_EQ(1, _midi.disable_count);
+    EXPECT_EQ(&thru, _midi.disabled_to);
+
+    ASSERT_TRUE(_midi.init());
+
+    _transport.rx_packets.push_back(midi1_channel_voice_ump(0, 0x90, 0x3C, 0x64));
+
+    ASSERT_TRUE(_midi.read().has_value());
+    EXPECT_TRUE(thru.tx_packets.empty());
+}
+
+TEST_F(MidiBaseTest, RegisterThruInterfaceCallsDisableHookWhenSoftwareListIsFull)
+{
+    std::array<FakeThru, CONFIG_ZLIBS_UTILS_MIDI_MAX_THRU_INTERFACES + 1> thru = {};
+
+    for (size_t i = 0; i < CONFIG_ZLIBS_UTILS_MIDI_MAX_THRU_INTERFACES; i++)
+    {
+        ASSERT_TRUE(_midi.register_thru_interface(thru.at(i)));
+    }
+
+    EXPECT_FALSE(_midi.register_thru_interface(thru.back()));
+    EXPECT_EQ(&thru.back(), _midi.disabled_to);
 }
 
 TEST_F(MidiBaseTest, SendNoteOnWritesStatusAndData)

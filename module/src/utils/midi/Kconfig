@@ -11,15 +11,15 @@ if ZLIBS_UTILS_MIDI
 
 config ZLIBS_UTILS_MIDI_TRANSPORT_BLE
     bool "Build BLE MIDI transport"
-    default y
+    default n
 
 config ZLIBS_UTILS_MIDI_TRANSPORT_SERIAL
     bool "Build serial MIDI transport"
-    default y
+    default n
 
 config ZLIBS_UTILS_MIDI_TRANSPORT_USB
     bool "Build USB MIDI transport"
-    default y
+    default n
 
 config ZLIBS_UTILS_MIDI_MAX_THRU_INTERFACES
     int "Maximum number of MIDI thru interfaces"

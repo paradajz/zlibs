@@ -8,13 +8,15 @@
 
 #include "transport_common.h"
 #include "zlibs/utils/midi/midi.h"
+#include "zlibs/utils/midi/transport/null/transport_null.h"
 
 namespace zlibs::utils::midi::usb
 {
+#ifdef CONFIG_ZLIBS_UTILS_MIDI_TRANSPORT_USB
     /**
      * @brief USB transport implementation of the MIDI base engine.
      */
-    class Usb : public Base
+    class Usb : public virtual Base
     {
         public:
         /**
@@ -23,7 +25,11 @@ namespace zlibs::utils::midi::usb
          * @param hwa Hardware abstraction used to send and receive USB MIDI UMP packets.
          */
         explicit Usb(Hwa& hwa)
-            : Base(hwa)
-        {}
+        {
+            bind_transport(hwa);
+        }
     };
+#else
+    using Usb = midi::Null;
+#endif
 }    // namespace zlibs::utils::midi::usb

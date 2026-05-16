@@ -45,6 +45,16 @@ namespace zlibs::utils::midi
         virtual bool init() = 0;
 
         /**
+         * @brief Returns whether the transport backend is available.
+         *
+         * @return `true` when the backend is supported, otherwise `false`.
+         */
+        virtual bool supported()
+        {
+            return true;
+        }
+
+        /**
          * @brief Deinitializes the transport backend.
          *
          * @return `true` on success, otherwise `false`.
