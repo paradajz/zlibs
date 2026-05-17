@@ -31,6 +31,12 @@ Public headers for this module are available in [`module/include/zlibs/utils/sig
 - `observe<T>()` does not replay previously published data by default.
 - `observe<T>(true)` enables replay for each subscription created through that observable chain.
 
+## Dispatcher synchronization
+
+- `drain()` waits until the dispatcher reaches all work queued before the call.
+- `dispatch_sync(callback)` runs a callback on the dispatcher after previously queued work and returns after the callback completes.
+- Both functions enqueue work and wait for the dispatcher. Do not call them from a signaling callback or from the dispatcher thread itself, because that would wait for work that the blocked dispatcher cannot run.
+
 ## Example usage
 
 ### `prj.conf`

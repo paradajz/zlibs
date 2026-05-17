@@ -21,6 +21,9 @@
 
 namespace zlibs::utils::signaling
 {
+    /** @brief Callback signature used by dispatcher-synchronous jobs. */
+    using DispatchSyncCallback = void (*)(void*);
+
     /**
      * @brief RAII subscription handle that auto-unsubscribes on destruction.
      */
@@ -476,6 +479,76 @@ namespace zlibs::utils::signaling
     };
 
     /**
+     * @brief Payload for a dispatcher barrier job.
+     */
+    struct DrainPayload
+    {
+        k_sem* done = nullptr;
+    };
+
+    /**
+     * @brief Job adapter that wakes a caller once earlier queued jobs have run.
+     */
+    struct DrainJob
+    {
+        /**
+         * @brief Signals that the dispatcher has reached the drain barrier.
+         *
+         * @param node Dispatch node containing `DrainPayload`.
+         */
+        static void invoke(DispatchNode* node)
+        {
+            auto* payload = std::launder(reinterpret_cast<DrainPayload*>(node->payload));
+
+            if (payload->done != nullptr)
+            {
+                k_sem_give(payload->done);
+            }
+
+            payload->~DrainPayload();
+        }
+    };
+
+    /**
+     * @brief Payload for a synchronous dispatcher callback job.
+     */
+    struct DispatchSyncPayload
+    {
+        k_sem*               done    = nullptr;
+        DispatchSyncCallback cb      = nullptr;
+        void*                context = nullptr;
+    };
+
+    /**
+     * @brief Job adapter that runs a caller-provided callback on the dispatcher thread.
+     */
+    struct DispatchSyncJob
+    {
+        /**
+         * @brief Runs the callback and wakes the waiting caller.
+         *
+         * @param node Dispatch node containing `DispatchSyncPayload`.
+         */
+        static void invoke(DispatchNode* node)
+        {
+            auto* payload = std::launder(reinterpret_cast<DispatchSyncPayload*>(node->payload));
+            auto* done    = payload->done;
+
+            if (payload->cb)
+            {
+                payload->cb(payload->context);
+            }
+
+            payload->~DispatchSyncPayload();
+
+            if (done != nullptr)
+            {
+                k_sem_give(done);
+            }
+        }
+    };
+
+    /**
      * @brief Singleton asynchronous signaling dispatcher backed by a dedicated thread, FIFO and memory slab.
      */
     class Signaling : public zlibs::utils::misc::NonCopyableOrMovable
@@ -610,6 +683,49 @@ namespace zlibs::utils::signaling
         }
 
         /**
+         * @brief Waits until the dispatcher reaches all work queued before this call.
+         *
+         * This function queues a barrier on the dispatcher and then waits for it
+         * to run. Do not call it from a signaling callback or from the
+         * dispatcher thread itself, because the dispatcher cannot process the
+         * barrier while it is blocked waiting for that same barrier.
+         *
+         * @param alloc_timeout Maximum time to wait for a barrier node allocation.
+         *
+         * @return `true` when the barrier was queued and reached, otherwise `false`.
+         */
+        bool drain(k_timeout_t alloc_timeout = K_FOREVER);
+
+        /**
+         * @brief Runs a callback on the dispatcher thread after previously queued work.
+         *
+         * This function queues the callback on the dispatcher and then waits for
+         * it to complete. Do not call it from a signaling callback or from the
+         * dispatcher thread itself, because the dispatcher cannot process the
+         * queued callback while it is blocked waiting for that same callback.
+         *
+         * @param cb Callback to run from dispatcher context.
+         * @param alloc_timeout Maximum time to wait for a dispatch node allocation.
+         *
+         * @return `true` when the callback was queued and completed, otherwise `false`.
+         */
+        template<typename Cb>
+        bool dispatch_sync(Cb&& cb, k_timeout_t alloc_timeout = K_FOREVER)
+        {
+            using Callback = std::decay_t<Cb>;
+
+            Callback callback(std::forward<Cb>(cb));
+
+            return dispatch_sync_impl(
+                [](void* context)
+                {
+                    (*static_cast<Callback*>(context))();
+                },
+                &callback,
+                alloc_timeout);
+        }
+
+        /**
          * @brief Reads the last published signal.
          *
          * @tparam Signal Signal payload type.
@@ -695,6 +811,17 @@ namespace zlibs::utils::signaling
          * @return Pointer to allocated memory, or `nullptr` on failure.
          */
         void* allocate(k_timeout_t timeout = K_NO_WAIT);
+
+        /**
+         * @brief Runs a callback pointer on the dispatcher thread after previously queued work.
+         *
+         * @param cb Callback to run from dispatcher context.
+         * @param context Opaque context passed to the callback.
+         * @param alloc_timeout Maximum time to wait for a dispatch node allocation.
+         *
+         * @return `true` when the callback was queued and completed, otherwise `false`.
+         */
+        bool dispatch_sync_impl(DispatchSyncCallback cb, void* context, k_timeout_t alloc_timeout);
     };
 
     /**
@@ -745,6 +872,40 @@ namespace zlibs::utils::signaling
     Observable<Signal> observe(bool replay = false)
     {
         return Signaling::instance().template observe<Signal>(replay);
+    }
+
+    /**
+     * @brief Waits until the dispatcher reaches all work queued before this call.
+     *
+     * This function queues a barrier on the dispatcher and then waits for it to
+     * run. Do not call it from a signaling callback or from the dispatcher
+     * thread itself.
+     *
+     * @param alloc_timeout Maximum time to wait for a barrier node allocation.
+     *
+     * @return `true` when the barrier was queued and reached, otherwise `false`.
+     */
+    inline bool drain(k_timeout_t alloc_timeout = K_FOREVER)
+    {
+        return Signaling::instance().drain(alloc_timeout);
+    }
+
+    /**
+     * @brief Runs a callback on the global dispatcher thread after previously queued work.
+     *
+     * This function queues the callback on the dispatcher and then waits for it
+     * to complete. Do not call it from a signaling callback or from the
+     * dispatcher thread itself.
+     *
+     * @param cb Callback to run from dispatcher context.
+     * @param alloc_timeout Maximum time to wait for a dispatch node allocation.
+     *
+     * @return `true` when the callback was queued and completed, otherwise `false`.
+     */
+    template<typename Cb>
+    bool dispatch_sync(Cb&& cb, k_timeout_t alloc_timeout = K_FOREVER)
+    {
+        return Signaling::instance().dispatch_sync(std::forward<Cb>(cb), alloc_timeout);
     }
 
     /**

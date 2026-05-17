@@ -84,6 +84,82 @@ namespace zlibs::utils::signaling
         return true;
     }
 
+    bool Signaling::drain(k_timeout_t alloc_timeout)
+    {
+        static_assert(sizeof(DrainPayload) <= CONFIG_ZLIBS_UTILS_SIGNALING_MAX_PAYLOAD_LENGTH_BYTES,
+                      "DrainPayload too large for dispatcher payload; increase CONFIG_ZLIBS_UTILS_SIGNALING_MAX_PAYLOAD_LENGTH_BYTES.");
+
+        if (_lifecycle.load(std::memory_order_acquire) != Lifecycle::Running)
+        {
+            return false;
+        }
+
+        k_sem done = {};
+        k_sem_init(&done, 0, 1);
+
+        auto* memory = allocate(alloc_timeout);
+
+        if (memory == nullptr)
+        {
+            return false;
+        }
+
+        auto* node   = new (memory) DispatchNode{};
+        node->invoke = &DrainJob::invoke;
+        new (node->payload) DrainPayload{ .done = &done };
+
+        if (!try_enqueue(node))
+        {
+            std::launder(reinterpret_cast<DrainPayload*>(node->payload))->~DrainPayload();
+            release(node);
+            return false;
+        }
+
+        k_sem_take(&done, K_FOREVER);
+
+        return true;
+    }
+
+    bool Signaling::dispatch_sync_impl(DispatchSyncCallback cb, void* context, k_timeout_t alloc_timeout)
+    {
+        static_assert(sizeof(DispatchSyncPayload) <= CONFIG_ZLIBS_UTILS_SIGNALING_MAX_PAYLOAD_LENGTH_BYTES,
+                      "DispatchSyncPayload too large for dispatcher payload; increase CONFIG_ZLIBS_UTILS_SIGNALING_MAX_PAYLOAD_LENGTH_BYTES.");
+
+        if (_lifecycle.load(std::memory_order_acquire) != Lifecycle::Running)
+        {
+            return false;
+        }
+
+        k_sem done = {};
+        k_sem_init(&done, 0, 1);
+
+        auto* memory = allocate(alloc_timeout);
+
+        if (memory == nullptr)
+        {
+            return false;
+        }
+
+        auto* node   = new (memory) DispatchNode{};
+        node->invoke = &DispatchSyncJob::invoke;
+        new (node->payload) DispatchSyncPayload{
+            .done    = &done,
+            .cb      = cb,
+            .context = context,
+        };
+
+        if (!try_enqueue(node))
+        {
+            std::launder(reinterpret_cast<DispatchSyncPayload*>(node->payload))->~DispatchSyncPayload();
+            release(node);
+            return false;
+        }
+
+        k_sem_take(&done, K_FOREVER);
+
+        return true;
+    }
+
     void Signaling::release(DispatchNode* node)
     {
         if (node == nullptr)

@@ -42,7 +42,7 @@ class SignalingTest : public Test
 
     void wait_for_async_dispatch()
     {
-        k_msleep(1);
+        ASSERT_TRUE(signaling::drain());
     }
 };
 
@@ -98,6 +98,60 @@ TEST_F(SignalingTest, Signals)
     ASSERT_EQ(data.a, received_data.at(1).a);
     ASSERT_EQ(data.b, received_data.at(1).b);
     ASSERT_EQ(data.c, received_data.at(1).c);
+}
+
+TEST_F(SignalingTest, DrainWaitsForQueuedPublishJobs)
+{
+    struct Data
+    {
+        uint8_t value = 0;
+    };
+
+    size_t received = 0;
+
+    auto sub = signaling::subscribe<Data>([&](const Data& data)
+                                          {
+                                              received += data.value;
+                                          });
+
+    ASSERT_TRUE(signaling::publish(Data{ .value = 1 }));
+    ASSERT_TRUE(signaling::publish(Data{ .value = 2 }));
+    ASSERT_TRUE(signaling::drain());
+
+    ASSERT_EQ(3, received);
+}
+
+TEST_F(SignalingTest, DispatchSyncRunsBeforeChildWorkPublishedByEarlierJob)
+{
+    struct Parent
+    {
+    };
+
+    struct Child
+    {
+    };
+
+    std::vector<uint8_t> order = {};
+
+    auto parent_sub = signaling::subscribe<Parent>([&](const Parent&)
+                                                   {
+                                                       order.push_back(1);
+                                                       ASSERT_TRUE(signaling::publish(Child{}));
+                                                   });
+
+    auto child_sub = signaling::subscribe<Child>([&](const Child&)
+                                                 {
+                                                     order.push_back(3);
+                                                 });
+
+    ASSERT_TRUE(signaling::publish(Parent{}));
+    ASSERT_TRUE(signaling::dispatch_sync([&]()
+                                         {
+                                             order.push_back(2);
+                                         }));
+    ASSERT_TRUE(signaling::drain());
+
+    ASSERT_THAT(order, ElementsAre(1, 2, 3));
 }
 
 TEST_F(SignalingTest, DerivedSignal)
