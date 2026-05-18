@@ -9,6 +9,8 @@ using namespace zlibs::utils::sysex_conf;
 
 void SysExConf::reset()
 {
+    const zlibs::utils::misc::LockGuard lock(_lock);
+
     _configuration_enabled          = false;
     _user_error_ignore_mode_enabled = false;
     _decoded_request                = {};
@@ -21,6 +23,8 @@ void SysExConf::reset()
 
 bool SysExConf::set_layout(std::span<const Block> layout)
 {
+    const zlibs::utils::misc::LockGuard lock(_lock);
+
     _configuration_enabled = false;
 
     if (!layout.empty())
@@ -34,6 +38,8 @@ bool SysExConf::set_layout(std::span<const Block> layout)
 
 bool SysExConf::setup_custom_requests(std::span<const CustomRequest> custom_requests)
 {
+    const zlibs::utils::misc::LockGuard lock(_lock);
+
     if (!custom_requests.empty())
     {
         _custom_requests = custom_requests;
@@ -55,16 +61,22 @@ bool SysExConf::setup_custom_requests(std::span<const CustomRequest> custom_requ
 
 bool SysExConf::is_configuration_enabled()
 {
+    const zlibs::utils::misc::LockGuard lock(_lock);
+
     return _configuration_enabled;
 }
 
 void SysExConf::close_connection()
 {
+    const zlibs::utils::misc::LockGuard lock(_lock);
+
     _configuration_enabled = false;
 }
 
 void SysExConf::set_user_error_ignore_mode(bool state)
 {
+    const zlibs::utils::misc::LockGuard lock(_lock);
+
     _user_error_ignore_mode_enabled = state;
 }
 
@@ -160,6 +172,8 @@ void SysExConf::handle_request(std::span<const uint8_t> message)
 
 void SysExConf::handle_packet(const midi_ump& packet)
 {
+    const zlibs::utils::misc::LockGuard lock(_lock);
+
     if (!midi::is_sysex7_packet(packet))
     {
         reset_ump_message();
@@ -836,6 +850,8 @@ bool SysExConf::check_new_value()
 
 void SysExConf::send_custom_message(std::span<const uint16_t> values, bool ack)
 {
+    const zlibs::utils::misc::LockGuard lock(_lock);
+
     _response_counter = 0;
 
     _response_array[_response_counter++] = SYSEX_START_BYTE;

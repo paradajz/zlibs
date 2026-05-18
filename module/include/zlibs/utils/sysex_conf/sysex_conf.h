@@ -7,6 +7,8 @@
 
 #include "sysex_conf_deps.h"
 
+#include "zlibs/utils/misc/mutex.h"
+
 namespace zlibs::utils::sysex_conf
 {
     /**
@@ -100,6 +102,7 @@ namespace zlibs::utils::sysex_conf
         private:
         DataHandler&                   _data_handler;
         const ManufacturerId&          _manufacturer_id;
+        zlibs::utils::misc::Mutex      _lock;
         uint8_t                        _response_array[MAX_MESSAGE_SIZE] = {};
         uint16_t                       _response_counter                 = 0;
         bool                           _configuration_enabled            = false;

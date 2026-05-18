@@ -5,7 +5,11 @@
 
 #include "tests/tests_common.h"
 
+#include "zlibs/utils/misc/mutex.h"
 #include "zlibs/utils/sysex_conf/sysex_conf.h"
+#include "zlibs/utils/threads/threads.h"
+
+#include <zephyr/kernel.h>
 
 #include <array>
 
@@ -119,10 +123,20 @@ namespace
         class TestDataHandler : public DataHandler
         {
             public:
-            TestDataHandler() = default;
+            TestDataHandler()
+            {
+                k_sem_init(&get_entered, 0, 1);
+                k_sem_init(&release_get, 0, 1);
+            }
 
             Status get(uint8_t block, uint8_t section, uint16_t index, uint16_t& value) override
             {
+                if (block_get)
+                {
+                    k_sem_give(&get_entered);
+                    k_sem_take(&release_get, K_FOREVER);
+                }
+
                 value = TEST_VALUE_GET;
 
                 if (get_results.empty())
@@ -183,22 +197,32 @@ namespace
 
             void reset()
             {
-                _response.clear();
-                _response_active.clear();
-                _response_ump.clear();
+                {
+                    const zlibs::utils::misc::LockGuard lock(_response_lock);
+                    _response.clear();
+                    _response_active.clear();
+                    _response_ump.clear();
+                }
+
                 get_results.clear();
                 set_results.clear();
                 custom_append_results.clear();
                 force_custom_request_overflow = false;
+                block_get                     = false;
             }
 
             std::size_t response_counter()
             {
-                return _response.size();
+                const zlibs::utils::misc::LockGuard lock(_response_lock);
+                const auto                          size = _response.size();
+
+                return size;
             }
 
             std::vector<uint8_t> response(uint8_t index)
             {
+                const zlibs::utils::misc::LockGuard lock(_response_lock);
+
                 if (index >= _response.size())
                 {
                     return {};
@@ -209,11 +233,16 @@ namespace
 
             std::size_t response_ump_counter()
             {
-                return _response_ump.size();
+                const zlibs::utils::misc::LockGuard lock(_response_lock);
+                const auto                          size = _response_ump.size();
+
+                return size;
             }
 
             midi_ump response_ump(uint8_t index)
             {
+                const zlibs::utils::misc::LockGuard lock(_response_lock);
+
                 if (index >= _response_ump.size())
                 {
                     return {};
@@ -224,6 +253,8 @@ namespace
 
             bool send_response(const midi_ump& packet) override
             {
+                const zlibs::utils::misc::LockGuard lock(_response_lock);
+
                 _response_ump.push_back(packet);
 
                 const auto status = midi::sysex7_status(packet);
@@ -254,8 +285,12 @@ namespace
             std::vector<Status> set_results                   = {};
             std::vector<bool>   custom_append_results         = {};
             bool                force_custom_request_overflow = false;
+            bool                block_get                     = false;
+            k_sem               get_entered                   = {};
+            k_sem               release_get                   = {};
 
             private:
+            zlibs::utils::misc::Mutex         _response_lock;
             std::vector<std::vector<uint8_t>> _response;
             std::vector<uint8_t>              _response_active;
             std::vector<midi_ump>             _response_ump;
@@ -2092,6 +2127,70 @@ TEST_F(SysExConfTest, CustomMessage)
 
     // Check the number of received messages.
     ASSERT_EQ(1, data_handler.response_counter());
+}
+
+TEST_F(SysExConfTest, PublicCallsAreSerialized)
+{
+    open_conn();
+    data_handler.reset();
+    data_handler.block_get = true;
+
+    const std::vector<uint16_t> custom_values = { 0x05, 0x06, 0x07 };
+
+    using HandlePacketThread  = zlibs::utils::threads::UserThread<zlibs::utils::misc::StringLiteral{ "sysex_handle" },
+                                                                  K_PRIO_PREEMPT(0),
+                                                                  4096>;
+    using CustomMessageThread = zlibs::utils::threads::UserThread<zlibs::utils::misc::StringLiteral{ "sysex_custom" },
+                                                                  K_PRIO_PREEMPT(0),
+                                                                  4096>;
+
+    k_sem handle_done = {};
+    k_sem custom_done = {};
+    k_sem_init(&handle_done, 0, 1);
+    k_sem_init(&custom_done, 0, 1);
+
+    HandlePacketThread handle_thread(
+        [this, &handle_done]()
+        {
+            handle_packet(get_single_valid);
+            k_sem_give(&handle_done);
+        });
+
+    CustomMessageThread custom_thread(
+        [this, &custom_values, &custom_done]()
+        {
+            sys_ex_conf.send_custom_message(custom_values);
+            k_sem_give(&custom_done);
+        });
+
+    ASSERT_TRUE(handle_thread.run());
+
+    ASSERT_EQ(0, k_sem_take(&data_handler.get_entered, K_MSEC(500)));
+
+    ASSERT_TRUE(custom_thread.run());
+
+    k_msleep(20);
+    ASSERT_EQ(0, data_handler.response_counter());
+
+    k_sem_give(&data_handler.release_get);
+
+    ASSERT_EQ(0, k_sem_take(&handle_done, K_MSEC(1000)));
+    ASSERT_EQ(0, k_sem_take(&custom_done, K_MSEC(1000)));
+
+    ASSERT_EQ(2, data_handler.response_counter());
+
+    const auto request_response = data_handler.response(0);
+    ASSERT_GT(request_response.size(), 4);
+    EXPECT_EQ(static_cast<uint8_t>(Status::Ack), request_response.at(4));
+
+    const auto custom_response = data_handler.response(1);
+    ASSERT_EQ(10, custom_response.size());
+    EXPECT_EQ(static_cast<uint8_t>(Status::Ack), custom_response.at(4));
+    EXPECT_EQ(0x00, custom_response.at(5));
+    EXPECT_EQ(0x05, custom_response.at(6));
+    EXPECT_EQ(0x06, custom_response.at(7));
+    EXPECT_EQ(0x07, custom_response.at(8));
+    EXPECT_EQ(SYSEX_END_BYTE, custom_response.at(9));
 }
 
 TEST_F(SysExConfTest, Backup)

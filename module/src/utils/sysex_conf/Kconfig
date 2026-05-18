@@ -1,5 +1,6 @@
 menuconfig ZLIBS_UTILS_SYSEX_CONF
     bool "SysEx configuration library"
+    select ZLIBS_UTILS_MISC
     default n
     help
       Enable the SysEx-based configuration protocol library.
