@@ -33,7 +33,7 @@ Public headers for this module are available in [`module/include/zlibs/utils/sig
 
 ## Dispatcher synchronization
 
-- `drain()` waits until the dispatcher reaches all work queued before the call.
+- `drain()` waits until the dispatcher finishes queued work, including work queued by callbacks while draining.
 - `dispatch_sync(callback)` runs a callback on the dispatcher after previously queued work and returns after the callback completes.
 - Both functions enqueue work and wait for the dispatcher. Do not call them from a signaling callback or from the dispatcher thread itself, because that would wait for work that the blocked dispatcher cannot run.
 

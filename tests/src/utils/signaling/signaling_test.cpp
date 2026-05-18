@@ -121,6 +121,74 @@ TEST_F(SignalingTest, DrainWaitsForQueuedPublishJobs)
     ASSERT_EQ(3, received);
 }
 
+TEST_F(SignalingTest, DrainWaitsForChildWorkPublishedByQueuedJobs)
+{
+    struct Parent
+    {
+    };
+
+    struct Child
+    {
+    };
+
+    std::vector<uint8_t> order = {};
+
+    auto parent_sub = signaling::subscribe<Parent>([&](const Parent&)
+                                                   {
+                                                       order.push_back(1);
+                                                       ASSERT_TRUE(signaling::publish(Child{}));
+                                                   });
+
+    auto child_sub = signaling::subscribe<Child>([&](const Child&)
+                                                 {
+                                                     order.push_back(2);
+                                                 });
+
+    ASSERT_TRUE(signaling::publish(Parent{}));
+    ASSERT_TRUE(signaling::drain());
+
+    ASSERT_THAT(order, ElementsAre(1, 2));
+}
+
+TEST_F(SignalingTest, DrainWaitsForNestedChildWorkPublishedByQueuedJobs)
+{
+    struct Parent
+    {
+    };
+
+    struct Child
+    {
+    };
+
+    struct Grandchild
+    {
+    };
+
+    std::vector<uint8_t> order = {};
+
+    auto parent_sub = signaling::subscribe<Parent>([&](const Parent&)
+                                                   {
+                                                       order.push_back(1);
+                                                       ASSERT_TRUE(signaling::publish(Child{}));
+                                                   });
+
+    auto child_sub = signaling::subscribe<Child>([&](const Child&)
+                                                 {
+                                                     order.push_back(2);
+                                                     ASSERT_TRUE(signaling::publish(Grandchild{}));
+                                                 });
+
+    auto grandchild_sub = signaling::subscribe<Grandchild>([&](const Grandchild&)
+                                                           {
+                                                               order.push_back(3);
+                                                           });
+
+    ASSERT_TRUE(signaling::publish(Parent{}));
+    ASSERT_TRUE(signaling::drain());
+
+    ASSERT_THAT(order, ElementsAre(1, 2, 3));
+}
+
 TEST_F(SignalingTest, DispatchSyncRunsBeforeChildWorkPublishedByEarlierJob)
 {
     struct Parent

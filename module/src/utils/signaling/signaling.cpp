@@ -80,19 +80,52 @@ namespace zlibs::utils::signaling
             return false;
         }
 
+        const zlibs::utils::misc::LockGuard lock(_enqueue_lock);
+
+        if (_lifecycle.load(std::memory_order_acquire) != Lifecycle::Running)
+        {
+            return false;
+        }
+
+        _enqueue_generation++;
         k_fifo_put(&_fifo, node);
         return true;
     }
 
     bool Signaling::drain(k_timeout_t alloc_timeout)
     {
-        static_assert(sizeof(DrainPayload) <= CONFIG_ZLIBS_UTILS_SIGNALING_MAX_PAYLOAD_LENGTH_BYTES,
-                      "DrainPayload too large for dispatcher payload; increase CONFIG_ZLIBS_UTILS_SIGNALING_MAX_PAYLOAD_LENGTH_BYTES.");
-
         if (_lifecycle.load(std::memory_order_acquire) != Lifecycle::Running)
         {
             return false;
         }
+
+        while (true)
+        {
+            uint64_t before = 0;
+
+            if (!enqueue_drain_barrier(alloc_timeout, before))
+            {
+                return false;
+            }
+
+            uint64_t after = 0;
+
+            {
+                const zlibs::utils::misc::LockGuard lock(_enqueue_lock);
+                after = _enqueue_generation;
+            }
+
+            if (before == after)
+            {
+                return true;
+            }
+        }
+    }
+
+    bool Signaling::enqueue_drain_barrier(k_timeout_t alloc_timeout, uint64_t& generation)
+    {
+        static_assert(sizeof(DrainPayload) <= CONFIG_ZLIBS_UTILS_SIGNALING_MAX_PAYLOAD_LENGTH_BYTES,
+                      "DrainPayload too large for dispatcher payload; increase CONFIG_ZLIBS_UTILS_SIGNALING_MAX_PAYLOAD_LENGTH_BYTES.");
 
         k_sem done = {};
         k_sem_init(&done, 0, 1);
@@ -108,11 +141,18 @@ namespace zlibs::utils::signaling
         node->invoke = &DrainJob::invoke;
         new (node->payload) DrainPayload{ .done = &done };
 
-        if (!try_enqueue(node))
         {
-            std::launder(reinterpret_cast<DrainPayload*>(node->payload))->~DrainPayload();
-            release(node);
-            return false;
+            const zlibs::utils::misc::LockGuard lock(_enqueue_lock);
+
+            if (_lifecycle.load(std::memory_order_acquire) != Lifecycle::Running)
+            {
+                std::launder(reinterpret_cast<DrainPayload*>(node->payload))->~DrainPayload();
+                release(node);
+                return false;
+            }
+
+            generation = _enqueue_generation;
+            k_fifo_put(&_fifo, node);
         }
 
         k_sem_take(&done, K_FOREVER);

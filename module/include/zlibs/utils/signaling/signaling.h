@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <new>
@@ -683,16 +684,17 @@ namespace zlibs::utils::signaling
         }
 
         /**
-         * @brief Waits until the dispatcher reaches all work queued before this call.
+         * @brief Waits until the dispatcher finishes queued work and work queued by that work.
          *
-         * This function queues a barrier on the dispatcher and then waits for it
-         * to run. Do not call it from a signaling callback or from the
-         * dispatcher thread itself, because the dispatcher cannot process the
-         * barrier while it is blocked waiting for that same barrier.
+         * This function queues dispatcher barriers until one complete barrier
+         * pass observes no additional dispatcher work being queued. Do not call
+         * it from a signaling callback or from the dispatcher thread itself,
+         * because the dispatcher cannot process the barrier while it is blocked
+         * waiting for that same barrier.
          *
          * @param alloc_timeout Maximum time to wait for a barrier node allocation.
          *
-         * @return `true` when the barrier was queued and reached, otherwise `false`.
+         * @return `true` when the dispatcher quiesced, otherwise `false`.
          */
         bool drain(k_timeout_t alloc_timeout = K_FOREVER);
 
@@ -755,10 +757,12 @@ namespace zlibs::utils::signaling
             Stopped,
         };
 
-        Thread                 _thread;
-        std::atomic<Lifecycle> _lifecycle = Lifecycle::Stopped;
-        k_fifo                 _fifo      = {};
-        k_mem_slab             _slab      = {};
+        Thread                    _thread;
+        std::atomic<Lifecycle>    _lifecycle = Lifecycle::Stopped;
+        zlibs::utils::misc::Mutex _enqueue_lock;
+        uint64_t                  _enqueue_generation = 0;
+        k_fifo                    _fifo               = {};
+        k_mem_slab                _slab               = {};
 
         static_assert(sizeof(DispatchNode) % 4 == 0, "DispatchNode size must be multiple of 4 for k_mem_slab");
         char __aligned(alignof(std::max_align_t)) _slab_buffer[CONFIG_ZLIBS_UTILS_SIGNALING_MAX_POOL_SIZE * sizeof(signaling::DispatchNode)] = {};
@@ -795,6 +799,16 @@ namespace zlibs::utils::signaling
          *         dispatcher is no longer accepting work.
          */
         bool try_enqueue(DispatchNode* node);
+
+        /**
+         * @brief Queues one drain barrier and waits until the dispatcher reaches it.
+         *
+         * @param alloc_timeout Maximum wait time for slab allocation.
+         * @param generation Snapshot of counted work queued before the barrier.
+         *
+         * @return `true` when the barrier was reached, otherwise `false`.
+         */
+        bool enqueue_drain_barrier(k_timeout_t alloc_timeout, uint64_t& generation);
 
         /**
          * @brief Destroys and frees a dispatch node back to the slab.
