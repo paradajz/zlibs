@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include <zephyr/kernel.h>
+
 namespace zlibs::utils::signaling
 {
     /** @brief Callback signature used by dispatcher-synchronous jobs. */
@@ -586,6 +588,12 @@ namespace zlibs::utils::signaling
                 return false;
             }
 
+            if (k_current_get() == _dispatcher_thread.load(std::memory_order_acquire))
+            {
+                Channel<Signal>::publish(signal);
+                return true;
+            }
+
             if (auto memory = allocate())
             {
                 auto node    = new (memory) DispatchNode{};
@@ -758,7 +766,8 @@ namespace zlibs::utils::signaling
         };
 
         Thread                    _thread;
-        std::atomic<Lifecycle>    _lifecycle = Lifecycle::Stopped;
+        std::atomic<Lifecycle>    _lifecycle         = Lifecycle::Stopped;
+        std::atomic<k_tid_t>      _dispatcher_thread = nullptr;
         zlibs::utils::misc::Mutex _enqueue_lock;
         uint64_t                  _enqueue_generation = 0;
         k_fifo                    _fifo               = {};

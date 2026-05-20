@@ -31,6 +31,8 @@ namespace zlibs::utils::signaling
 
     void Signaling::run_loop()
     {
+        _dispatcher_thread.store(k_current_get(), std::memory_order_release);
+
         while (true)
         {
             auto* node = static_cast<signaling::DispatchNode*>(k_fifo_get(&_fifo, K_FOREVER));
@@ -55,6 +57,7 @@ namespace zlibs::utils::signaling
             release(entry);
         }
 
+        _dispatcher_thread.store(nullptr, std::memory_order_release);
         _lifecycle.store(Lifecycle::Stopped, std::memory_order_release);
     }
 
