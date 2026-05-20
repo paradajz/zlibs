@@ -3,5 +3,11 @@
 # file, but can be overridden here.
 
 manifest:
-  self:
-    import: zephyr/west
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: bcf31c20f01f11609dbff940483d5172d7897691
+      import: true

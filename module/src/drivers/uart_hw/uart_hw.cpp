@@ -184,12 +184,7 @@ void UartHw::isr()
 
     while (true)
     {
-        const int update_result = uart_irq_update(_device);
-
-        if (update_result <= 0)
-        {
-            break;
-        }
+        uart_irq_update(_device);
 
         const int pending_result = uart_irq_is_pending(_device);
 
