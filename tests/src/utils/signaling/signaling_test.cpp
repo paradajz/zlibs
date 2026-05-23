@@ -189,7 +189,7 @@ TEST_F(SignalingTest, DrainWaitsForNestedChildWorkPublishedByQueuedJobs)
     ASSERT_THAT(order, ElementsAre(1, 2, 3));
 }
 
-TEST_F(SignalingTest, DispatchSyncRunsBeforeChildWorkPublishedByEarlierJob)
+TEST_F(SignalingTest, ChildWorkPublishedByDispatcherRunsBeforeLaterDispatchSync)
 {
     struct Parent
     {
@@ -219,7 +219,77 @@ TEST_F(SignalingTest, DispatchSyncRunsBeforeChildWorkPublishedByEarlierJob)
                                          }));
     ASSERT_TRUE(signaling::drain());
 
-    ASSERT_THAT(order, ElementsAre(1, 2, 3));
+    ASSERT_THAT(order, ElementsAre(1, 3, 2));
+}
+
+TEST_F(SignalingTest, ChildWorkPublishedByDispatcherDoesNotNeedFreeDispatchNode)
+{
+    struct Parent
+    {
+    };
+
+    struct Child
+    {
+    };
+
+    struct Filler
+    {
+        uint32_t value = 0;
+    };
+
+    k_sem parent_started = {};
+    k_sem release_parent = {};
+    k_sem_init(&parent_started, 0, 1);
+    k_sem_init(&release_parent, 0, 1);
+
+    bool   parent_waited           = false;
+    bool   child_publish_succeeded = false;
+    size_t child_subscriber_calls  = 0;
+    bool   dispatch_pool_exhausted = false;
+    size_t filler_subscriber_calls = 0;
+
+    auto parent_sub = signaling::subscribe<Parent>([&](const Parent&)
+                                                   {
+                                                       k_sem_give(&parent_started);
+                                                       parent_waited = (k_sem_take(&release_parent, K_SECONDS(1)) == 0);
+
+                                                       if (parent_waited)
+                                                       {
+                                                           child_publish_succeeded = signaling::publish(Child{});
+                                                       }
+                                                   });
+
+    auto child_sub = signaling::subscribe<Child>([&](const Child&)
+                                                 {
+                                                     child_subscriber_calls++;
+                                                 });
+
+    auto filler_sub = signaling::subscribe<Filler>([&](const Filler&)
+                                                   {
+                                                       filler_subscriber_calls++;
+                                                   });
+
+    ASSERT_TRUE(signaling::publish(Parent{}));
+    ASSERT_EQ(0, k_sem_take(&parent_started, K_SECONDS(1)));
+
+    for (uint32_t i = 0; i < CONFIG_ZLIBS_UTILS_SIGNALING_MAX_POOL_SIZE * 4; i++)
+    {
+        if (!signaling::publish(Filler{ .value = i }))
+        {
+            dispatch_pool_exhausted = true;
+            break;
+        }
+    }
+
+    ASSERT_TRUE(dispatch_pool_exhausted);
+
+    k_sem_give(&release_parent);
+    ASSERT_TRUE(signaling::drain());
+
+    ASSERT_TRUE(parent_waited);
+    ASSERT_TRUE(child_publish_succeeded);
+    ASSERT_EQ(1, child_subscriber_calls);
+    ASSERT_GT(filler_subscriber_calls, 0);
 }
 
 TEST_F(SignalingTest, DerivedSignal)
