@@ -55,7 +55,7 @@ namespace zlibs::utils::midi::midi1
         requires ChannelVoiceMessageType<Type>
     constexpr midi_ump channel_voice(uint8_t group, uint8_t channel, uint8_t data1, uint8_t data2)
     {
-        const uint8_t status = static_cast<uint8_t>(Type) | (channel & MIDI_LOW_NIBBLE_MASK);
+        const uint8_t status = static_cast<uint8_t>(Type) | (channel & misc::LOW_NIBBLE_MASK);
         return midi1_channel_voice_ump(group, status, data1, data2);
     }
 

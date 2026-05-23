@@ -5,8 +5,8 @@
 
 #include "zlibs/utils/lessdb/lessdb.h"
 
+using namespace zlibs::utils;
 using namespace zlibs::utils::lessdb;
-using namespace zlibs::utils::misc;
 
 bool LessDb::init()
 {
@@ -15,7 +15,7 @@ bool LessDb::init()
 
 bool LessDb::set_layout(std::span<const Block> layout, uint32_t start_address)
 {
-    const LockGuard lock(_mutex);
+    const misc::LockGuard lock(_mutex);
 
     if (start_address >= _hwa.address_count())
     {
@@ -43,8 +43,8 @@ bool LessDb::set_layout(std::span<const Block> layout, uint32_t start_address)
 
 std::optional<uint32_t> LessDb::read(size_t block_index, size_t section_index, size_t parameter_index)
 {
-    const LockGuard lock(_mutex);
-    uint32_t        value = 0;
+    const misc::LockGuard lock(_mutex);
+    uint32_t              value = 0;
 
     if (!check_parameters(block_index, section_index, parameter_index))
     {
@@ -59,9 +59,9 @@ std::optional<uint32_t> LessDb::read(size_t block_index, size_t section_index, s
     {
     case SectionParameterType::Bit:
     {
-        array_index = parameter_index / BIT_VALUES_IN_BYTE;
+        array_index = parameter_index / misc::BYTE_BIT_COUNT;
         start_address += array_index;
-        const uint8_t bit_index = static_cast<uint8_t>(parameter_index - (array_index * BIT_VALUES_IN_BYTE));
+        const uint8_t bit_index = static_cast<uint8_t>(parameter_index - (array_index * misc::BYTE_BIT_COUNT));
 
         if (start_address == _last_read_address)
         {
@@ -85,7 +85,7 @@ std::optional<uint32_t> LessDb::read(size_t block_index, size_t section_index, s
 
         if (const auto read_value = _hwa.read(start_address, SectionParameterType::Byte); read_value.has_value())
         {
-            value = read_value.value() & static_cast<int32_t>(BYTE_MASK);
+            value = read_value.value() & static_cast<int32_t>(misc::BYTE_MASK);
         }
         else
         {
@@ -96,13 +96,13 @@ std::optional<uint32_t> LessDb::read(size_t block_index, size_t section_index, s
 
     case SectionParameterType::HalfByte:
     {
-        start_address += parameter_index / HALF_BYTE_VALUES_IN_BYTE;
+        start_address += parameter_index / misc::BYTE_NIBBLE_COUNT;
 
         if (start_address == _last_read_address)
         {
             value = _last_read_value;
 
-            if (parameter_index % HALF_BYTE_VALUES_IN_BYTE)
+            if (parameter_index % misc::BYTE_NIBBLE_COUNT)
             {
                 value >>= 4;
             }
@@ -112,7 +112,7 @@ std::optional<uint32_t> LessDb::read(size_t block_index, size_t section_index, s
             _last_read_value = read_value.value();
             value            = read_value.value();
 
-            if (parameter_index % HALF_BYTE_VALUES_IN_BYTE)
+            if (parameter_index % misc::BYTE_NIBBLE_COUNT)
             {
                 value >>= 4;
             }
@@ -124,18 +124,18 @@ std::optional<uint32_t> LessDb::read(size_t block_index, size_t section_index, s
 
         if (ret)
         {
-            value &= HALF_BYTE_MASK_LOWER;
+            value &= misc::LOW_NIBBLE_MASK;
         }
     }
     break;
 
     case SectionParameterType::Word:
     {
-        start_address += parameter_index * WORD_SIZE_IN_BYTES;
+        start_address += parameter_index * misc::WORD_SIZE_IN_BYTES;
 
         if (const auto read_value = _hwa.read(start_address, SectionParameterType::Word); read_value.has_value())
         {
-            value = read_value.value() & WORD_MASK;
+            value = read_value.value() & misc::WORD_MASK;
         }
         else
         {
@@ -147,7 +147,7 @@ std::optional<uint32_t> LessDb::read(size_t block_index, size_t section_index, s
     default:
     {
         // case SectionParameterType::Dword:
-        start_address += parameter_index * DWORD_SIZE_IN_BYTES;
+        start_address += parameter_index * misc::DWORD_SIZE_IN_BYTES;
         const auto read_value = _hwa.read(start_address, SectionParameterType::Dword);
 
         if (read_value.has_value())
@@ -176,7 +176,7 @@ std::optional<uint32_t> LessDb::read(size_t block_index, size_t section_index, s
 
 bool LessDb::update(size_t block_index, size_t section_index, size_t parameter_index, uint32_t new_value)
 {
-    const LockGuard lock(_mutex);
+    const misc::LockGuard lock(_mutex);
 
     if (_layout.empty())
     {
@@ -199,8 +199,8 @@ bool LessDb::update(size_t block_index, size_t section_index, size_t parameter_i
     case SectionParameterType::Bit:
     {
         new_value &= static_cast<uint32_t>(0x01);
-        array_index = parameter_index / BIT_VALUES_IN_BYTE;
-        bit_index   = parameter_index - BIT_VALUES_IN_BYTE * array_index;
+        array_index = parameter_index / misc::BYTE_BIT_COUNT;
+        bit_index   = parameter_index - misc::BYTE_BIT_COUNT * array_index;
         start_address += array_index;
 
         if (const auto read_value = _hwa.read(start_address, SectionParameterType::Bit); read_value.has_value())
@@ -223,7 +223,7 @@ bool LessDb::update(size_t block_index, size_t section_index, size_t parameter_i
 
     case SectionParameterType::Byte:
     {
-        new_value &= BYTE_MASK;
+        new_value &= misc::BYTE_MASK;
         start_address += parameter_index;
         return write(start_address, new_value, SectionParameterType::Byte);
     }
@@ -231,21 +231,21 @@ bool LessDb::update(size_t block_index, size_t section_index, size_t parameter_i
 
     case SectionParameterType::HalfByte:
     {
-        new_value &= HALF_BYTE_MASK_LOWER;
-        start_address += (parameter_index / HALF_BYTE_VALUES_IN_BYTE);
+        new_value &= misc::LOW_NIBBLE_MASK;
+        start_address += (parameter_index / misc::BYTE_NIBBLE_COUNT);
 
         if (const auto read_value = _hwa.read(start_address, SectionParameterType::HalfByte); read_value.has_value())
         {
             array_value = read_value.value();
 
-            if (parameter_index % HALF_BYTE_VALUES_IN_BYTE)
+            if (parameter_index % misc::BYTE_NIBBLE_COUNT)
             {
-                array_value &= HALF_BYTE_MASK_LOWER;
+                array_value &= misc::LOW_NIBBLE_MASK;
                 array_value |= (new_value << 4);
             }
             else
             {
-                array_value &= HALF_BYTE_MASK_UPPER;
+                array_value &= misc::HIGH_NIBBLE_MASK;
                 array_value |= new_value;
             }
 
@@ -256,15 +256,15 @@ bool LessDb::update(size_t block_index, size_t section_index, size_t parameter_i
 
     case SectionParameterType::Word:
     {
-        new_value &= WORD_MASK;
-        start_address += (parameter_index * WORD_SIZE_IN_BYTES);
+        new_value &= misc::WORD_MASK;
+        start_address += (parameter_index * misc::WORD_SIZE_IN_BYTES);
         return write(start_address, new_value, SectionParameterType::Word);
     }
     break;
 
     case SectionParameterType::Dword:
     {
-        start_address += (parameter_index * DWORD_SIZE_IN_BYTES);
+        start_address += (parameter_index * misc::DWORD_SIZE_IN_BYTES);
         return write(start_address, new_value, SectionParameterType::Dword);
     }
     break;
@@ -295,13 +295,13 @@ bool LessDb::write(uint32_t address, uint32_t value, SectionParameterType type)
 
 bool LessDb::clear()
 {
-    const LockGuard lock(_mutex);
+    const misc::LockGuard lock(_mutex);
     return _hwa.clear();
 }
 
 bool LessDb::init_data(FactoryResetType type)
 {
-    const LockGuard lock(_mutex);
+    const misc::LockGuard lock(_mutex);
 
     for (size_t block = 0; block < _layout.size(); block++)
     {
@@ -354,11 +354,11 @@ bool LessDb::init_data(FactoryResetType type)
                     }
                     else if (parameter_type == SectionParameterType::Word)
                     {
-                        start_address += WORD_SIZE_IN_BYTES;
+                        start_address += misc::WORD_SIZE_IN_BYTES;
                     }
                     else if (parameter_type == SectionParameterType::Dword)
                     {
-                        start_address += DWORD_SIZE_IN_BYTES;
+                        start_address += misc::DWORD_SIZE_IN_BYTES;
                     }
                 }
             }
@@ -366,15 +366,15 @@ bool LessDb::init_data(FactoryResetType type)
 
             case SectionParameterType::Bit:
             {
-                size_t loops = (number_of_parameters / BIT_VALUES_IN_BYTE) + ((number_of_parameters % BIT_VALUES_IN_BYTE) != 0);
+                size_t loops = (number_of_parameters / misc::BYTE_BIT_COUNT) + ((number_of_parameters % misc::BYTE_BIT_COUNT) != 0);
 
                 for (size_t loop = 0; loop < loops; loop++)
                 {
                     uint8_t value = 0;
 
-                    for (uint8_t bit = 0; bit < BIT_VALUES_IN_BYTE; bit++)
+                    for (uint8_t bit = 0; bit < misc::BYTE_BIT_COUNT; bit++)
                     {
-                        const size_t parameter = (loop * BIT_VALUES_IN_BYTE) + bit;
+                        const size_t parameter = (loop * misc::BYTE_BIT_COUNT) + bit;
 
                         if (parameter >= number_of_parameters)
                         {
@@ -402,15 +402,15 @@ bool LessDb::init_data(FactoryResetType type)
 
             case SectionParameterType::HalfByte:
             {
-                size_t loops = (number_of_parameters / HALF_BYTE_VALUES_IN_BYTE) + ((number_of_parameters % HALF_BYTE_VALUES_IN_BYTE) != 0);
+                size_t loops = (number_of_parameters / misc::BYTE_NIBBLE_COUNT) + ((number_of_parameters % misc::BYTE_NIBBLE_COUNT) != 0);
 
                 for (size_t loop = 0; loop < loops; loop++)
                 {
                     uint8_t value = 0;
 
-                    for (uint8_t half_byte = 0; half_byte < HALF_BYTE_VALUES_IN_BYTE; half_byte++)
+                    for (uint8_t half_byte = 0; half_byte < misc::BYTE_NIBBLE_COUNT; half_byte++)
                     {
-                        const size_t parameter = (loop * HALF_BYTE_VALUES_IN_BYTE) + half_byte;
+                        const size_t parameter = (loop * misc::BYTE_NIBBLE_COUNT) + half_byte;
 
                         if (parameter >= number_of_parameters)
                         {
@@ -419,7 +419,7 @@ bool LessDb::init_data(FactoryResetType type)
 
                         if (default_values.size() == number_of_parameters)
                         {
-                            default_value = default_values[parameter] & HALF_BYTE_MASK_LOWER;
+                            default_value = default_values[parameter] & misc::LOW_NIBBLE_MASK;
                         }
 
                         value <<= 4;

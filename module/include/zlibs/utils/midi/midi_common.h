@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "zlibs/utils/misc/bit.h"
+
 #include <zephyr/audio/midi.h>
 
 #include <array>
@@ -17,20 +19,8 @@
 
 namespace zlibs::utils::midi
 {
-    /** @brief Number of bits in one byte. */
-    constexpr inline uint8_t BITS_IN_BYTE = 8;
-
     /** @brief Mask for valid 7-bit MIDI data-byte payload. */
     constexpr inline uint8_t MIDI_DATA_BYTE_MASK = 0x7F;
-
-    /** @brief Mask for extracting a low 4-bit nibble. */
-    constexpr inline uint8_t MIDI_LOW_NIBBLE_MASK = 0x0F;
-
-    /** @brief Mask for extracting the channel nibble from a MIDI status byte. */
-    constexpr inline uint8_t MIDI_CHANNEL_NIBBLE_FROM_STATUS_MASK = MIDI_LOW_NIBBLE_MASK;
-
-    /** @brief Mask for extracting message-type nibble from channel status byte. */
-    constexpr inline uint8_t MIDI_STATUS_CHANNEL_MASK = 0xF0;
 
     /** @brief Minimum value for MIDI status bytes (`0x80`). */
     constexpr inline uint8_t MIDI_STATUS_MIN = 0x80;
@@ -206,17 +196,17 @@ namespace zlibs::utils::midi
         {
             if (high & 0x01)
             {
-                low |= (1 << (BITS_IN_BYTE - 1));
+                low |= (1 << (misc::BYTE_BIT_COUNT - 1));
             }
             else
             {
-                low &= ~(1 << (BITS_IN_BYTE - 1));
+                low &= ~(1 << (misc::BYTE_BIT_COUNT - 1));
             }
 
             high >>= 1;
 
             uint16_t joined = high;
-            joined <<= BITS_IN_BYTE;
+            joined <<= misc::BYTE_BIT_COUNT;
             joined |= low;
 
             _value = joined;
@@ -259,13 +249,11 @@ namespace zlibs::utils::midi
          */
         constexpr explicit Split14Bit(uint16_t value)
         {
-            constexpr uint16_t BYTE_MASK = 0xFF;
-
-            uint8_t new_high = (value >> BITS_IN_BYTE) & BYTE_MASK;
-            uint8_t new_low  = value & BYTE_MASK;
+            uint8_t new_high = (value >> misc::BYTE_BIT_COUNT) & misc::BYTE_MASK;
+            uint8_t new_low  = value & misc::BYTE_MASK;
             new_high         = (new_high << 1) & MIDI_DATA_BYTE_MASK;
 
-            if ((new_low >> (BITS_IN_BYTE - 1)) & 0x01)
+            if ((new_low >> (misc::BYTE_BIT_COUNT - 1)) & 0x01)
             {
                 new_high |= 0x01;
             }
@@ -337,7 +325,7 @@ namespace zlibs::utils::midi
      */
     constexpr uint8_t channel_from_status_byte(uint8_t status)
     {
-        return (status & MIDI_CHANNEL_NIBBLE_FROM_STATUS_MASK) + 1;
+        return (status & misc::LOW_NIBBLE_MASK) + 1;
     }
 
     /**
@@ -410,7 +398,7 @@ namespace zlibs::utils::midi
 
         if (status < MIDI_SYSTEM_MESSAGE_MIN)
         {
-            return static_cast<MessageType>(status & MIDI_STATUS_CHANNEL_MASK);
+            return static_cast<MessageType>(status & misc::HIGH_NIBBLE_MASK);
         }
 
         switch (status)
@@ -452,9 +440,9 @@ namespace zlibs::utils::midi
     constexpr uint32_t sysex7_header(uint8_t group, SysEx7Status status, size_t size)
     {
         return (UMP_MT_DATA_64 << UMP_MESSAGE_TYPE_SHIFT) |
-               ((group & MIDI_LOW_NIBBLE_MASK) << UMP_GROUP_SHIFT) |
-               ((static_cast<uint8_t>(status) & MIDI_LOW_NIBBLE_MASK) << UMP_STATUS_NIBBLE_SHIFT) |
-               ((size & MIDI_LOW_NIBBLE_MASK) << UMP_STATUS_BYTE_SHIFT);
+               ((group & misc::LOW_NIBBLE_MASK) << UMP_GROUP_SHIFT) |
+               ((static_cast<uint8_t>(status) & misc::LOW_NIBBLE_MASK) << UMP_STATUS_NIBBLE_SHIFT) |
+               ((size & misc::LOW_NIBBLE_MASK) << UMP_STATUS_BYTE_SHIFT);
     }
 
     /**
@@ -466,7 +454,7 @@ namespace zlibs::utils::midi
      */
     constexpr SysEx7Status sysex7_status(const midi_ump& packet)
     {
-        return static_cast<SysEx7Status>((packet.data[0] >> UMP_STATUS_NIBBLE_SHIFT) & MIDI_LOW_NIBBLE_MASK);
+        return static_cast<SysEx7Status>((packet.data[0] >> UMP_STATUS_NIBBLE_SHIFT) & misc::LOW_NIBBLE_MASK);
     }
 
     /**
@@ -478,7 +466,7 @@ namespace zlibs::utils::midi
      */
     constexpr uint8_t sysex7_payload_size(const midi_ump& packet)
     {
-        return (packet.data[0] >> UMP_STATUS_BYTE_SHIFT) & MIDI_LOW_NIBBLE_MASK;
+        return (packet.data[0] >> UMP_STATUS_BYTE_SHIFT) & misc::LOW_NIBBLE_MASK;
     }
 
     /**
@@ -559,11 +547,11 @@ namespace zlibs::utils::midi
 
         if (index < SYSEX7_DATA64_FIRST_WORD_PAYLOAD_SIZE)
         {
-            packet.data[0] |= static_cast<uint32_t>(byte) << (BITS_IN_BYTE * ((SYSEX7_DATA64_FIRST_WORD_PAYLOAD_SIZE - 1) - index));
+            packet.data[0] |= static_cast<uint32_t>(byte) << (misc::BYTE_BIT_COUNT * ((SYSEX7_DATA64_FIRST_WORD_PAYLOAD_SIZE - 1) - index));
         }
         else
         {
-            packet.data[1] |= static_cast<uint32_t>(byte) << (BITS_IN_BYTE * (SYSEX7_DATA64_SECOND_WORD_LAST_PAYLOAD_INDEX - index));
+            packet.data[1] |= static_cast<uint32_t>(byte) << (misc::BYTE_BIT_COUNT * (SYSEX7_DATA64_SECOND_WORD_LAST_PAYLOAD_INDEX - index));
         }
     }
 
@@ -579,10 +567,10 @@ namespace zlibs::utils::midi
     {
         if (index < SYSEX7_DATA64_FIRST_WORD_PAYLOAD_SIZE)
         {
-            return (packet.data[0] >> (BITS_IN_BYTE * ((SYSEX7_DATA64_FIRST_WORD_PAYLOAD_SIZE - 1) - index))) & MIDI_DATA_BYTE_MASK;
+            return (packet.data[0] >> (misc::BYTE_BIT_COUNT * ((SYSEX7_DATA64_FIRST_WORD_PAYLOAD_SIZE - 1) - index))) & MIDI_DATA_BYTE_MASK;
         }
 
-        return (packet.data[1] >> (BITS_IN_BYTE * (SYSEX7_DATA64_SECOND_WORD_LAST_PAYLOAD_INDEX - index))) & MIDI_DATA_BYTE_MASK;
+        return (packet.data[1] >> (misc::BYTE_BIT_COUNT * (SYSEX7_DATA64_SECOND_WORD_LAST_PAYLOAD_INDEX - index))) & MIDI_DATA_BYTE_MASK;
     }
 
     /**
@@ -631,9 +619,9 @@ namespace zlibs::utils::midi
         return {
             {
                 (static_cast<uint32_t>(UMP_MT_MIDI1_CHANNEL_VOICE) << UMP_MESSAGE_TYPE_SHIFT) |
-                    (static_cast<uint32_t>(group & MIDI_LOW_NIBBLE_MASK) << UMP_GROUP_SHIFT) |
-                    (static_cast<uint32_t>((status & MIDI_STATUS_CHANNEL_MASK) >> MIDI_STATUS_TYPE_SHIFT) << UMP_STATUS_NIBBLE_SHIFT) |
-                    (static_cast<uint32_t>(status & MIDI_LOW_NIBBLE_MASK) << UMP_STATUS_BYTE_SHIFT) |
+                    (static_cast<uint32_t>(group & misc::LOW_NIBBLE_MASK) << UMP_GROUP_SHIFT) |
+                    (static_cast<uint32_t>((status & misc::HIGH_NIBBLE_MASK) >> MIDI_STATUS_TYPE_SHIFT) << UMP_STATUS_NIBBLE_SHIFT) |
+                    (static_cast<uint32_t>(status & misc::LOW_NIBBLE_MASK) << UMP_STATUS_BYTE_SHIFT) |
                     (static_cast<uint32_t>(data1 & MIDI_DATA_BYTE_MASK) << UMP_PAYLOAD_BYTE_1_SHIFT) |
                     static_cast<uint32_t>(data2 & MIDI_DATA_BYTE_MASK),
             },
@@ -655,7 +643,7 @@ namespace zlibs::utils::midi
         return {
             {
                 (static_cast<uint32_t>(UMP_MT_SYS_RT_COMMON) << UMP_MESSAGE_TYPE_SHIFT) |
-                    (static_cast<uint32_t>(group & MIDI_LOW_NIBBLE_MASK) << UMP_GROUP_SHIFT) |
+                    (static_cast<uint32_t>(group & misc::LOW_NIBBLE_MASK) << UMP_GROUP_SHIFT) |
                     (static_cast<uint32_t>(status) << UMP_STATUS_BYTE_SHIFT) |
                     (static_cast<uint32_t>(data1 & MIDI_DATA_BYTE_MASK) << UMP_PAYLOAD_BYTE_1_SHIFT) |
                     static_cast<uint32_t>(data2 & MIDI_DATA_BYTE_MASK),

@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "zlibs/utils/misc/bit.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -15,18 +17,6 @@ namespace zlibs::utils::lessdb
 {
     class LessDb;
     class Block;
-
-    /** @brief Number of bit-type parameters packed into one byte. */
-    constexpr inline uint32_t BIT_VALUES_IN_BYTE = 8;
-
-    /** @brief Number of half-byte-type parameters packed into one byte. */
-    constexpr inline uint32_t HALF_BYTE_VALUES_IN_BYTE = 2;
-
-    /** @brief Number of bytes occupied by one word-type parameter. */
-    constexpr inline uint32_t WORD_SIZE_IN_BYTES = 2;
-
-    /** @brief Number of bytes occupied by one dword-type parameter. */
-    constexpr inline uint32_t DWORD_SIZE_IN_BYTES = 4;
 
     /**
      * @brief Storage type for a section parameter.
@@ -80,19 +70,19 @@ namespace zlibs::utils::lessdb
         switch (t)
         {
         case SectionParameterType::Bit:
-            return static_cast<uint32_t>((n / BIT_VALUES_IN_BYTE) + (n % BIT_VALUES_IN_BYTE != 0));
+            return static_cast<uint32_t>((n / misc::BYTE_BIT_COUNT) + (n % misc::BYTE_BIT_COUNT != 0));
 
         case SectionParameterType::HalfByte:
-            return static_cast<uint32_t>((n / HALF_BYTE_VALUES_IN_BYTE) + (n % HALF_BYTE_VALUES_IN_BYTE != 0));
+            return static_cast<uint32_t>((n / misc::BYTE_NIBBLE_COUNT) + (n % misc::BYTE_NIBBLE_COUNT != 0));
 
         case SectionParameterType::Byte:
             return static_cast<uint32_t>(n);
 
         case SectionParameterType::Word:
-            return static_cast<uint32_t>(n * WORD_SIZE_IN_BYTES);
+            return static_cast<uint32_t>(n * misc::WORD_SIZE_IN_BYTES);
 
         default:    // Dword
-            return static_cast<uint32_t>(n * DWORD_SIZE_IN_BYTES);
+            return static_cast<uint32_t>(n * misc::DWORD_SIZE_IN_BYTES);
         }
     }
 

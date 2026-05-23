@@ -7,6 +7,7 @@
 
 #include "lessdb_deps.h"
 
+#include "zlibs/utils/misc/bit.h"
 #include "zlibs/utils/misc/mutex.h"
 
 namespace zlibs::utils::lessdb
@@ -170,11 +171,7 @@ namespace zlibs::utils::lessdb
         bool init_data(FactoryResetType type = FactoryResetType::Full);
 
         private:
-        static constexpr uint32_t INVALID_ADDRESS      = 0xFFFFFFFF;
-        static constexpr uint32_t HALF_BYTE_MASK_LOWER = 0x0F;
-        static constexpr uint32_t HALF_BYTE_MASK_UPPER = 0xF0;
-        static constexpr uint32_t BYTE_MASK            = 0xFF;
-        static constexpr uint32_t WORD_MASK            = 0xFFFF;
+        static constexpr uint32_t INVALID_ADDRESS = 0xFFFFFFFF;
 
         static constexpr uint8_t BIT_MASK[8] = {
             0b00000001,
