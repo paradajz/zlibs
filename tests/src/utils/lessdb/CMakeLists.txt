@@ -9,7 +9,7 @@ include(CheckCXXSourceCompiles)
 # Verify compile-time API contract:
 # runtime layout construction should fail to compile because lessdb uses consteval factories.
 
-set(CMAKE_REQUIRED_INCLUDES "$ENV{ZEPHYR_PROJECT}/module/include")
+set(CMAKE_REQUIRED_INCLUDES "$ENV{ZENV_PROJECT_ROOT}/module/include")
 set(CMAKE_REQUIRED_FLAGS "-std=gnu++20")
 
 check_cxx_source_compiles("

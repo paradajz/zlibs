@@ -8,7 +8,7 @@ include(CheckCXXSourceCompiles)
 
 # Verify the compile-time API contract.
 
-set(CMAKE_REQUIRED_INCLUDES "$ENV{ZEPHYR_PROJECT}/module/include")
+set(CMAKE_REQUIRED_INCLUDES "$ENV{ZENV_PROJECT_ROOT}/module/include")
 set(CMAKE_REQUIRED_FLAGS "-std=gnu++20")
 
 check_cxx_source_compiles("
