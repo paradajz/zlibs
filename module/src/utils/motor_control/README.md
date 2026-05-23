@@ -18,7 +18,7 @@ This module does not automatically select additional Kconfig symbols.
 
 ## CMake library name
 
-- `zlibs-utils-motor_control`
+- `zlibs_utils_motor_control`
 
 ## Example usage
 
@@ -31,7 +31,7 @@ CONFIG_ZLIBS_UTILS_MOTOR_CONTROL=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-motor_control)
+target_link_libraries(app PRIVATE zlibs_utils_motor_control)
 ```
 
 ### Source code

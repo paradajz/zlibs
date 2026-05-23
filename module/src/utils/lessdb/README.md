@@ -18,7 +18,7 @@ Public headers for this module are available in [`module/include/zlibs/utils/les
 
 ## CMake library name
 
-- `zlibs-utils-lessdb`
+- `zlibs_utils_lessdb`
 
 ## Example usage
 
@@ -31,7 +31,7 @@ CONFIG_ZLIBS_UTILS_LESSDB=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-lessdb)
+target_link_libraries(app PRIVATE zlibs_utils_lessdb)
 ```
 
 ### Source code

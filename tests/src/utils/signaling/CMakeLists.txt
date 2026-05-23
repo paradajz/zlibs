@@ -10,10 +10,10 @@ target_sources(app
 )
 
 add_dependencies(app
-    zlibs-utils-signaling
+    zlibs_utils_signaling
 )
 
 target_link_libraries(app
     PUBLIC
-    zlibs-utils-signaling
+    zlibs_utils_signaling
 )

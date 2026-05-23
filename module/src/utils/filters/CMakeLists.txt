@@ -1,4 +1,4 @@
-zephyr_library_named(zlibs-utils-filters)
+zephyr_library_named(zlibs_utils_filters)
 
 zephyr_library_sources(
     filters.cpp

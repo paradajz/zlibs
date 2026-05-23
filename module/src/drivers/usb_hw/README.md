@@ -27,7 +27,7 @@ Public headers for this module are available in [`module/include/zlibs/drivers/u
 
 ## CMake library name
 
-- `zlibs-drivers-usb_hw`
+- `zlibs_drivers_usb_hw`
 
 ## Example usage
 
@@ -40,7 +40,7 @@ CONFIG_ZLIBS_DRIVERS_USB_HW=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-drivers-usb_hw)
+target_link_libraries(app PRIVATE zlibs_drivers_usb_hw)
 ```
 
 ### Source code

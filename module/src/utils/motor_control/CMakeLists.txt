@@ -1,4 +1,4 @@
-zephyr_library_named(zlibs-utils-motor_control)
+zephyr_library_named(zlibs_utils_motor_control)
 
 zephyr_library_sources(
     motor_control.cpp

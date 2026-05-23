@@ -18,7 +18,7 @@ This module does not automatically select additional Kconfig symbols.
 
 ## CMake library name
 
-- `zlibs-utils-filters`
+- `zlibs_utils_filters`
 
 ## Example usage
 
@@ -31,7 +31,7 @@ CONFIG_ZLIBS_UTILS_FILTERS=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-filters)
+target_link_libraries(app PRIVATE zlibs_utils_filters)
 ```
 
 ### Source code

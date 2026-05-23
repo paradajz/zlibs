@@ -10,12 +10,12 @@ target_sources(app
 )
 
 add_dependencies(app
-    zlibs-utils-filters
-    zlibs-utils-threads
+    zlibs_utils_filters
+    zlibs_utils_threads
 )
 
 target_link_libraries(app
     PUBLIC
-    zlibs-utils-filters
-    zlibs-utils-threads
+    zlibs_utils_filters
+    zlibs_utils_threads
 )

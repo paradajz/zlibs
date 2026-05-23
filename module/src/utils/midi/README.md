@@ -20,7 +20,7 @@ This module does not automatically select additional Kconfig symbols.
 
 ## CMake library name
 
-- `zlibs-utils-midi`
+- `zlibs_utils_midi`
 
 ## Example usage
 
@@ -33,7 +33,7 @@ CONFIG_ZLIBS_UTILS_MIDI=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-midi)
+target_link_libraries(app PRIVATE zlibs_utils_midi)
 ```
 
 ### Source code

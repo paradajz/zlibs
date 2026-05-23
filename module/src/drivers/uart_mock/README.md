@@ -18,7 +18,7 @@ This module does not automatically select additional Kconfig symbols.
 
 ## CMake library name
 
-- `zlibs-drivers-uart_mock`
+- `zlibs_drivers_uart_mock`
 
 ## Example usage
 
@@ -31,7 +31,7 @@ CONFIG_ZLIBS_DRIVERS_UART_MOCK=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-drivers-uart_mock)
+target_link_libraries(app PRIVATE zlibs_drivers_uart_mock)
 ```
 
 ### Source code

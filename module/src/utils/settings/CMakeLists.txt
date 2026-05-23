@@ -1,4 +1,4 @@
-zephyr_library_named(zlibs-utils-settings)
+zephyr_library_named(zlibs_utils_settings)
 
 zephyr_library_sources(
     settings.cpp

@@ -18,7 +18,7 @@ Public headers for this module are available in [`module/include/zlibs/utils/thr
 
 ## CMake library name
 
-- `zlibs-utils-threads`
+- `zlibs_utils_threads`
 
 ## Example usage
 
@@ -31,7 +31,7 @@ CONFIG_ZLIBS_UTILS_THREADS=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-threads)
+target_link_libraries(app PRIVATE zlibs_utils_threads)
 ```
 
 ### Source code

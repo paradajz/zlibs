@@ -21,7 +21,7 @@ Public headers for this module are available in [`module/include/zlibs/drivers/u
 
 ## CMake library name
 
-- `zlibs-drivers-uart_hw`
+- `zlibs_drivers_uart_hw`
 
 ## Example usage
 
@@ -34,7 +34,7 @@ CONFIG_ZLIBS_DRIVERS_UART_HW=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-drivers-uart_hw)
+target_link_libraries(app PRIVATE zlibs_drivers_uart_hw)
 ```
 
 ### Source code

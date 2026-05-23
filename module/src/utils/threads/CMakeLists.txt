@@ -1,4 +1,4 @@
-zephyr_library_named(zlibs-utils-threads)
+zephyr_library_named(zlibs_utils_threads)
 
 zephyr_library_sources(
     threads.cpp

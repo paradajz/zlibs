@@ -18,7 +18,7 @@ This module does not automatically select additional Kconfig symbols.
 
 ## CMake library name
 
-- `zlibs-utils-emueeprom`
+- `zlibs_utils_emueeprom`
 
 ## Notes
 
@@ -46,7 +46,7 @@ CONFIG_ZLIBS_UTILS_EMUEEPROM=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-emueeprom)
+target_link_libraries(app PRIVATE zlibs_utils_emueeprom)
 ```
 
 ### Source code

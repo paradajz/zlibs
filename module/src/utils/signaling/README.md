@@ -22,7 +22,7 @@ Public headers for this module are available in [`module/include/zlibs/utils/sig
 
 ## CMake library name
 
-- `zlibs-utils-signaling`
+- `zlibs_utils_signaling`
 
 ## Replay behavior
 
@@ -48,7 +48,7 @@ CONFIG_ZLIBS_UTILS_SIGNALING=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-signaling)
+target_link_libraries(app PRIVATE zlibs_utils_signaling)
 ```
 
 ### Source code

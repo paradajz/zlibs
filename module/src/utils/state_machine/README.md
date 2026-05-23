@@ -18,7 +18,7 @@ This module does not automatically select additional Kconfig symbols.
 
 ## CMake library name
 
-- `zlibs-utils-state_machine`
+- `zlibs_utils_state_machine`
 
 ## Example usage
 
@@ -31,7 +31,7 @@ CONFIG_ZLIBS_UTILS_STATE_MACHINE=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-state_machine)
+target_link_libraries(app PRIVATE zlibs_utils_state_machine)
 ```
 
 ### Source code

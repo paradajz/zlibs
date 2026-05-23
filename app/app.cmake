@@ -5,12 +5,12 @@ target_sources(app
 
 target_link_libraries(app
     PUBLIC
-    zlibs-drivers-uart_hw
-    zlibs-utils-filters
-    zlibs-utils-misc
-    zlibs-utils-motor_control
-    zlibs-utils-settings
-    zlibs-utils-signaling
-    zlibs-utils-state_machine
-    zlibs-utils-threads
+    zlibs_drivers_uart_hw
+    zlibs_utils_filters
+    zlibs_utils_misc
+    zlibs_utils_motor_control
+    zlibs_utils_settings
+    zlibs_utils_signaling
+    zlibs_utils_state_machine
+    zlibs_utils_threads
 )

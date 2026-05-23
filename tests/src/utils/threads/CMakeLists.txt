@@ -9,9 +9,9 @@ target_sources(app
     threads_test.cpp
 )
 
-add_dependencies(app zlibs-utils-threads)
+add_dependencies(app zlibs_utils_threads)
 
 target_link_libraries(app
     PUBLIC
-    zlibs-utils-threads
+    zlibs_utils_threads
 )

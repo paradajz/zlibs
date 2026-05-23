@@ -10,10 +10,10 @@ target_sources(app
 )
 
 add_dependencies(app
-    zlibs-utils-settings
+    zlibs_utils_settings
 )
 
 target_link_libraries(app
     PUBLIC
-    zlibs-utils-settings
+    zlibs_utils_settings
 )

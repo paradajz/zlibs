@@ -18,7 +18,7 @@ This module does not automatically select additional Kconfig symbols.
 
 ## CMake library name
 
-- `zlibs-utils-sysex_conf`
+- `zlibs_utils_sysex_conf`
 
 ## Protocol overview
 
@@ -41,7 +41,7 @@ CONFIG_ZLIBS_UTILS_SYSEX_CONF=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-sysex_conf)
+target_link_libraries(app PRIVATE zlibs_utils_sysex_conf)
 ```
 
 ### Source code

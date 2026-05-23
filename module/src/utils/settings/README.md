@@ -21,7 +21,7 @@ Public headers for this module are available in [`module/include/zlibs/utils/set
 
 ## CMake library name
 
-- `zlibs-utils-settings`
+- `zlibs_utils_settings`
 
 ## Example usage
 
@@ -34,7 +34,7 @@ CONFIG_ZLIBS_UTILS_SETTINGS=y
 ### `CMakeLists.txt`
 
 ```cmake
-target_link_libraries(app PRIVATE zlibs-utils-settings)
+target_link_libraries(app PRIVATE zlibs_utils_settings)
 ```
 
 ### Source code
