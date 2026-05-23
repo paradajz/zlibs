@@ -26,6 +26,11 @@ namespace
         class BleHwa : public zlibs::utils::midi::ble::Hwa
         {
             public:
+            bool supported() override
+            {
+                return true;
+            }
+
             bool init() override
             {
                 return true;

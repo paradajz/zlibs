@@ -49,10 +49,7 @@ namespace zlibs::utils::midi
          *
          * @return `true` when the backend is supported, otherwise `false`.
          */
-        virtual bool supported()
-        {
-            return true;
-        }
+        virtual bool supported() = 0;
 
         /**
          * @brief Deinitializes the transport backend.

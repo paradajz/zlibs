@@ -47,6 +47,7 @@ namespace zlibs::utils::midi::serial
                 : _serial(serial)
             {}
 
+            bool                    supported() override;
             bool                    init() override;
             bool                    deinit() override;
             bool                    write(const midi_ump& packet) override;

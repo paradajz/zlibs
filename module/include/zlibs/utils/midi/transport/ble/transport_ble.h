@@ -50,6 +50,7 @@ namespace zlibs::utils::midi::ble
                 : _ble(ble)
             {}
 
+            bool                    supported() override;
             bool                    init() override;
             bool                    deinit() override;
             bool                    write(const midi_ump& packet) override;

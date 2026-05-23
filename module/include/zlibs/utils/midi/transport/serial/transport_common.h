@@ -20,6 +20,13 @@ namespace zlibs::utils::midi::serial
         virtual ~Hwa() = default;
 
         /**
+         *  Returns whether serial MIDI hardware backend is available.
+         *
+         *  `true` when the backend is supported, otherwise `false`.
+         */
+        virtual bool supported() = 0;
+
+        /**
          * @brief Initializes serial MIDI hardware backend.
          *
          * @return `true` on success, otherwise `false`.

@@ -22,6 +22,11 @@ namespace
     constexpr uint8_t BLE_DATA_MASK = 0x7F;
 }    // namespace
 
+bool Ble::Transport::supported()
+{
+    return _ble._hwa.supported();
+}
+
 bool Ble::Transport::init()
 {
     _parser.reset();

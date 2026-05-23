@@ -31,6 +31,13 @@ namespace zlibs::utils::midi::ble
         virtual ~Hwa() = default;
 
         /**
+         *  Returns whether BLE-MIDI hardware backend is available.
+         *
+         *  `true` when the backend is supported, otherwise `false`.
+         */
+        virtual bool supported() = 0;
+
+        /**
          * @brief Initializes BLE-MIDI hardware backend.
          *
          * @return `true` on success, otherwise `false`.

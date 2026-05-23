@@ -8,6 +8,11 @@
 
 using namespace zlibs::utils::midi::serial;
 
+bool Serial::Transport::supported()
+{
+    return _serial._hwa.supported();
+}
+
 bool Serial::Transport::init()
 {
     return _serial._hwa.init();

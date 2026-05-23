@@ -24,6 +24,11 @@ namespace
         class SerialHwa : public zlibs::utils::midi::serial::Hwa
         {
             public:
+            bool supported() override
+            {
+                return true;
+            }
+
             bool init() override
             {
                 return true;

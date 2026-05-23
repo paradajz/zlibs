@@ -24,6 +24,11 @@ namespace
         class UsbHwa : public zlibs::utils::midi::usb::Hwa
         {
             public:
+            bool supported() override
+            {
+                return true;
+            }
+
             bool init() override
             {
                 return true;

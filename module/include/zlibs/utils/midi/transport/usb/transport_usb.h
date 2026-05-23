@@ -25,9 +25,39 @@ namespace zlibs::utils::midi::usb
          * @param hwa Hardware abstraction used to send and receive USB MIDI UMP packets.
          */
         explicit Usb(Hwa& hwa)
+            : _transport(*this)
+            , _hwa(hwa)
         {
-            bind_transport(hwa);
+            bind_transport(_transport);
         }
+
+        private:
+        /**
+         * @brief Internal USB-MIDI UMP transport.
+         */
+        class Transport : public midi::Transport
+        {
+            public:
+            /**
+             * @brief Constructs a USB-MIDI transport bridge.
+             *
+             * @param usb Owning USB MIDI instance.
+             */
+            explicit Transport(Usb& usb)
+                : _usb(usb)
+            {}
+
+            bool                    supported() override;
+            bool                    init() override;
+            bool                    deinit() override;
+            bool                    write(const midi_ump& packet) override;
+            std::optional<midi_ump> read() override;
+
+            private:
+            Usb& _usb;
+        } _transport;
+
+        Hwa& _hwa;
     };
 #else
     using Usb = midi::Null;
