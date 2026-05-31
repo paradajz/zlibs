@@ -15,6 +15,11 @@ bool LessDb::init()
 
 bool LessDb::set_layout(std::span<const Block> layout, uint32_t start_address)
 {
+    return set_layout(layout, start_address, 0);
+}
+
+bool LessDb::set_layout(std::span<const Block> layout, uint32_t start_address, uint32_t layout_uid)
+{
     const misc::LockGuard lock(_mutex);
 
     if (start_address >= _hwa.address_count())
@@ -36,6 +41,7 @@ bool LessDb::set_layout(std::span<const Block> layout, uint32_t start_address)
     }
 
     _initial_address = start_address;
+    _layout_uid      = layout_uid;
     _layout          = layout;
 
     return true;
@@ -299,6 +305,24 @@ bool LessDb::clear()
     return _hwa.clear();
 }
 
+void LessDb::register_layout_init_provider(size_t block_index, size_t section_index, InitProvider&& provider)
+{
+    const misc::LockGuard lock(_mutex);
+
+    _init_providers.push_back({
+        .layout_uid    = _layout_uid,
+        .block_index   = block_index,
+        .section_index = section_index,
+        .provider      = std::move(provider),
+    });
+}
+
+void LessDb::clear_init_providers()
+{
+    const misc::LockGuard lock(_mutex);
+    _init_providers.clear();
+}
+
 bool LessDb::init_data(FactoryResetType type)
 {
     const misc::LockGuard lock(_mutex);
@@ -317,7 +341,6 @@ bool LessDb::init_data(FactoryResetType type)
             auto start_address        = section_address(block, section);
             auto parameter_type       = _layout[block]._sections[section]._parameter_type;
             auto default_value        = _layout[block]._sections[section]._default_value;
-            auto default_values       = _layout[block]._sections[section]._default_values;
             auto number_of_parameters = _layout[block]._sections[section]._number_of_parameters;
 
             switch (parameter_type)
@@ -330,19 +353,18 @@ bool LessDb::init_data(FactoryResetType type)
                 {
                     if (_layout[block]._sections[section]._auto_increment == AutoIncrementSetting::Enable)
                     {
-                        if (!write(start_address, default_value + parameter, parameter_type))
+                        const auto value = init_value(block, section, parameter, default_value + parameter);
+
+                        if (!write(start_address, value, parameter_type))
                         {
                             return false;
                         }
                     }
                     else
                     {
-                        if (default_values.size() == number_of_parameters)
-                        {
-                            default_value = default_values[parameter];
-                        }
+                        const auto value = init_value(block, section, parameter, default_value);
 
-                        if (!write(start_address, default_value, parameter_type))
+                        if (!write(start_address, value, parameter_type))
                         {
                             return false;
                         }
@@ -381,13 +403,14 @@ bool LessDb::init_data(FactoryResetType type)
                             break;
                         }
 
-                        if (default_values.size() == number_of_parameters)
-                        {
-                            default_value = default_values[parameter] & 0x01;
-                        }
+                        uint32_t parameter_default = default_value;
 
-                        value <<= 1;
-                        value |= default_value;
+                        parameter_default = init_value(block, section, parameter, parameter_default) & 0x01;
+
+                        if (parameter_default != 0)
+                        {
+                            value |= BIT_MASK[bit];
+                        }
                     }
 
                     if (!write(start_address, value, SectionParameterType::Byte))
@@ -417,13 +440,18 @@ bool LessDb::init_data(FactoryResetType type)
                             break;
                         }
 
-                        if (default_values.size() == number_of_parameters)
-                        {
-                            default_value = default_values[parameter] & misc::LOW_NIBBLE_MASK;
-                        }
+                        uint32_t parameter_default = default_value;
 
-                        value <<= 4;
-                        value |= default_value;
+                        parameter_default = init_value(block, section, parameter, parameter_default) & misc::LOW_NIBBLE_MASK;
+
+                        if (half_byte == 0)
+                        {
+                            value |= parameter_default;
+                        }
+                        else
+                        {
+                            value |= parameter_default << 4;
+                        }
                     }
 
                     if (!write(start_address, value, SectionParameterType::Byte))
@@ -440,6 +468,31 @@ bool LessDb::init_data(FactoryResetType type)
     }
 
     return true;
+}
+
+uint32_t LessDb::init_value(size_t block_index, size_t section_index, size_t parameter_index, uint32_t default_value) const
+{
+    const InitRequest request{
+        .block_index     = block_index,
+        .section_index   = section_index,
+        .parameter_index = parameter_index,
+    };
+
+    for (const auto& entry : _init_providers)
+    {
+        if ((entry.layout_uid == _layout_uid) &&
+            (entry.block_index == request.block_index) &&
+            (entry.section_index == request.section_index) &&
+            (entry.provider != nullptr))
+        {
+            if (const auto value = entry.provider(request); value.has_value())
+            {
+                return value.value();
+            }
+        }
+    }
+
+    return default_value;
 }
 
 uint32_t LessDb::address_count() const

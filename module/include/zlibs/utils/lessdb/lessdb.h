@@ -10,8 +10,21 @@
 #include "zlibs/utils/misc/bit.h"
 #include "zlibs/utils/misc/mutex.h"
 
+#include <functional>
+#include <vector>
+
 namespace zlibs::utils::lessdb
 {
+    /**
+     * @brief Describes one value requested during database initialization.
+     */
+    struct InitRequest
+    {
+        size_t block_index     = 0;
+        size_t section_index   = 0;
+        size_t parameter_index = 0;
+    };
+
     /**
      * @brief Lightweight parameter database backed by an arbitrary storage medium.
      *
@@ -29,6 +42,8 @@ namespace zlibs::utils::lessdb
             : _hwa(hwa)
         {}
 
+        using InitProvider = std::function<std::optional<uint32_t>(const InitRequest& request)>;
+
         /**
          * @brief Initializes the underlying storage hardware.
          *
@@ -37,25 +52,22 @@ namespace zlibs::utils::lessdb
         bool init();
 
         /**
-         * @brief Assigns a layout and validates address-space fit.
+         * @brief Assigns a compile-time layout and validates address-space fit.
          *
          * Section offsets from block start must already be embedded in the
          * Section objects by make_block(). Block offsets from layout start
-         * must already be embedded in the Block objects by make_layout(). This function stores
-         * start_address and validates that the layout fits in hardware address
-         * space starting from that address.
+         * must already be embedded in the Block objects by make_layout().
          *
-         * Layout descriptors are intended to be created at compile time by
-         * make_block() and make_layout().
-         *
-         * @param layout        View over the block-and-section layout descriptor.
-         *                      The referenced data must remain valid for the lifetime
-         *                      of this LessDb instance (or until the next set_layout call).
+         * @param layout        Compile-time layout descriptor.
          * @param start_address Address offset at which the first block begins.
          *
          * @return `true` on success, otherwise `false`.
          */
-        bool set_layout(std::span<const Block> layout, uint32_t start_address = 0);
+        template<size_t N>
+        bool set_layout(const std::array<Block, N>& layout, uint32_t start_address = 0)
+        {
+            return set_layout(layout, start_address, layout_uid(layout));
+        }
 
         /**
          * @brief Computes a layout UID at compile time for fixed-size layout arrays.
@@ -133,6 +145,30 @@ namespace zlibs::utils::lessdb
         bool update(size_t block_index, size_t section_index, size_t parameter_index, uint32_t new_value);
 
         /**
+         * @brief Registers an initializer for values in one layout section.
+         *
+         * The provider is called by init_data() before writing each matching
+         * parameter. Returning a value overrides the section's layout default;
+         * returning std::nullopt keeps the layout default.
+         *
+         * Providers are scoped to the active layout UID. Use the array
+         * set_layout() overload to bind providers to a compile-time layout UID.
+         *
+         * Providers run while LessDb is initializing data and must not call
+         * back into the same LessDb instance.
+         *
+         * @param block_index   Block index within the layout.
+         * @param section_index Section index within the block.
+         * @param provider      Initial value provider.
+         */
+        void register_layout_init_provider(size_t block_index, size_t section_index, InitProvider&& provider);
+
+        /**
+         * @brief Removes all registered initialization providers.
+         */
+        void clear_init_providers();
+
+        /**
          * @brief Returns the number of bytes used by a layout descriptor.
          *
          * This helper is constexpr-friendly, so it can be evaluated for
@@ -186,10 +222,44 @@ namespace zlibs::utils::lessdb
 
         Hwa&                              _hwa;
         uint32_t                          _initial_address   = 0;
+        uint32_t                          _layout_uid        = 0;
         uint8_t                           _last_read_value   = 0;
         uint32_t                          _last_read_address = INVALID_ADDRESS;
         std::span<const Block>            _layout;
         mutable zlibs::utils::misc::Mutex _mutex;
+
+        struct InitProviderEntry
+        {
+            uint32_t     layout_uid;
+            size_t       block_index;
+            size_t       section_index;
+            InitProvider provider;
+        };
+
+        std::vector<InitProviderEntry> _init_providers;
+
+        /**
+         * @brief Assigns a layout without a compile-time layout UID.
+         *
+         * This compatibility path scopes init providers to UID 0.
+         *
+         * @param layout        Layout descriptor.
+         * @param start_address Address offset at which the first block begins.
+         *
+         * @return `true` on success, otherwise `false`.
+         */
+        bool set_layout(std::span<const Block> layout, uint32_t start_address);
+
+        /**
+         * @brief Assigns a layout with a precomputed layout UID.
+         *
+         * @param layout        Layout descriptor.
+         * @param start_address Address offset at which the first block begins.
+         * @param layout_uid    UID associated with the layout descriptor.
+         *
+         * @return `true` on success, otherwise `false`.
+         */
+        bool set_layout(std::span<const Block> layout, uint32_t start_address, uint32_t layout_uid);
 
         /**
          * @brief Writes a raw value to storage and verifies it by reading it back.
@@ -201,6 +271,20 @@ namespace zlibs::utils::lessdb
          * @return `true` when the write succeeds and the read-back value matches, otherwise `false`.
          */
         bool write(uint32_t address, uint32_t value, SectionParameterType type);
+
+        /**
+         * @brief Returns an initialized value for a parameter.
+         *
+         * Registered init providers may override the provided layout default.
+         *
+         * @param block_index     Block index.
+         * @param section_index   Section index within the block.
+         * @param parameter_index Parameter index within the section.
+         * @param default_value   Default value declared by the active layout.
+         *
+         * @return Provider-supplied value, or default_value when no provider overrides it.
+         */
+        uint32_t init_value(size_t block_index, size_t section_index, size_t parameter_index, uint32_t default_value) const;
 
         /**
          * @brief Verifies that a block/section/parameter tuple is within the active layout.

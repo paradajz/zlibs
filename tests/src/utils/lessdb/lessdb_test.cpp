@@ -910,6 +910,190 @@ TYPED_TEST(LessDbBackendsTest, Read)
     ASSERT_EQ(TestFixture::DEFAULT_VALUES[1], value);
 }
 
+TYPED_TEST(LessDbBackendsTest, InitProviderOverridesDefaults)
+{
+    this->_lessdb.register_layout_init_provider(TestFixture::TEST_BLOCK_INDEX,
+                                                1,
+                                                [](const InitRequest& request) -> std::optional<uint32_t>
+                                                {
+                                                    if ((request.parameter_index % 2) == 0)
+                                                    {
+                                                        return 100 + request.parameter_index;
+                                                    }
+
+                                                    return {};
+                                                });
+
+    this->_lessdb.register_layout_init_provider(TestFixture::TEST_BLOCK_INDEX,
+                                                3,
+                                                [](const InitRequest& request) -> std::optional<uint32_t>
+                                                {
+                                                    return 2000 + request.parameter_index;
+                                                });
+
+    ASSERT_TRUE(this->_lessdb.init_data(FactoryResetType::Full));
+
+    for (size_t i = 0; i < TestFixture::SECTION_PARAMS[1]; i++)
+    {
+        const auto read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 1, i);
+        ASSERT_TRUE(read_opt.has_value());
+
+        const auto expected_value = ((i % 2) == 0) ? 100 + i : TestFixture::DEFAULT_VALUES[1] + i;
+        ASSERT_EQ(expected_value, read_opt.value());
+    }
+
+    for (size_t i = 0; i < TestFixture::SECTION_PARAMS[3]; i++)
+    {
+        const auto read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 3, i);
+        ASSERT_TRUE(read_opt.has_value());
+        ASSERT_EQ(2000 + i, read_opt.value());
+    }
+}
+
+TYPED_TEST(LessDbBackendsTest, InitProviderOverridesPackedDefaults)
+{
+    this->_lessdb.register_layout_init_provider(TestFixture::TEST_BLOCK_INDEX,
+                                                0,
+                                                [](const InitRequest& request) -> std::optional<uint32_t>
+                                                {
+                                                    return request.parameter_index % 2;
+                                                });
+
+    this->_lessdb.register_layout_init_provider(TestFixture::TEST_BLOCK_INDEX,
+                                                2,
+                                                [](const InitRequest& request) -> std::optional<uint32_t>
+                                                {
+                                                    return request.parameter_index & 0x0F;
+                                                });
+
+    ASSERT_TRUE(this->_lessdb.init_data(FactoryResetType::Full));
+
+    for (size_t i = 0; i < TestFixture::SECTION_PARAMS[0]; i++)
+    {
+        const auto read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 0, i);
+        ASSERT_TRUE(read_opt.has_value());
+        ASSERT_EQ(i % 2, read_opt.value());
+    }
+
+    for (size_t i = 0; i < TestFixture::SECTION_PARAMS[2]; i++)
+    {
+        const auto read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 2, i);
+        ASSERT_TRUE(read_opt.has_value());
+        ASSERT_EQ(i & 0x0F, read_opt.value());
+    }
+}
+
+TYPED_TEST(LessDbBackendsTest, SectionDefaultValueDefaultsToZero)
+{
+    static constexpr auto ZERO_DEFAULT_BLOCK = make_block(std::array<Section, 1>{
+        Section{
+            TestFixture::SECTION_PARAMS[1],
+            SectionParameterType::Byte,
+            PreserveSetting::Disable,
+            AutoIncrementSetting::Disable,
+        },
+    });
+
+    static constexpr auto ZERO_DEFAULT_LAYOUT = make_layout(std::array<Block, 1>{
+        Block(ZERO_DEFAULT_BLOCK),
+    });
+
+    ASSERT_TRUE(this->_lessdb.set_layout(ZERO_DEFAULT_LAYOUT));
+    ASSERT_TRUE(this->_lessdb.init_data(FactoryResetType::Full));
+
+    for (size_t i = 0; i < TestFixture::SECTION_PARAMS[1]; i++)
+    {
+        const auto read_opt = this->_lessdb.read(0, 0, i);
+        ASSERT_TRUE(read_opt.has_value());
+        ASSERT_EQ(0, read_opt.value());
+    }
+}
+
+TYPED_TEST(LessDbBackendsTest, InitProviderIsScopedToActiveLayoutUid)
+{
+    static constexpr auto SINGLE_BLOCK_LAYOUT = make_layout(std::array<Block, 1>{
+        Block(TestFixture::BLOCK_0),
+    });
+
+    this->_lessdb.register_layout_init_provider(TestFixture::TEST_BLOCK_INDEX,
+                                                5,
+                                                [](const InitRequest&) -> std::optional<uint32_t>
+                                                {
+                                                    return 10;
+                                                });
+
+    ASSERT_TRUE(this->_lessdb.set_layout(SINGLE_BLOCK_LAYOUT));
+    ASSERT_TRUE(this->_lessdb.init_data(FactoryResetType::Full));
+
+    for (size_t i = 0; i < TestFixture::SECTION_PARAMS[5]; i++)
+    {
+        const auto read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 5, i);
+        ASSERT_TRUE(read_opt.has_value());
+        ASSERT_EQ(TestFixture::DEFAULT_VALUES[5], read_opt.value());
+    }
+
+    ASSERT_TRUE(this->_lessdb.set_layout(TestFixture::TEST_LAYOUT));
+    ASSERT_TRUE(this->_lessdb.init_data(FactoryResetType::Full));
+
+    for (size_t i = 0; i < TestFixture::SECTION_PARAMS[5]; i++)
+    {
+        const auto read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 5, i);
+        ASSERT_TRUE(read_opt.has_value());
+        ASSERT_EQ(10, read_opt.value());
+    }
+}
+
+TYPED_TEST(LessDbBackendsTest, InitProviderIsSkippedForPreservedSectionsOnPartialReset)
+{
+    this->_lessdb.register_layout_init_provider(TestFixture::TEST_BLOCK_INDEX,
+                                                0,
+                                                [](const InitRequest&) -> std::optional<uint32_t>
+                                                {
+                                                    return 0;
+                                                });
+
+    this->_lessdb.register_layout_init_provider(TestFixture::TEST_BLOCK_INDEX,
+                                                1,
+                                                [](const InitRequest&) -> std::optional<uint32_t>
+                                                {
+                                                    return 77;
+                                                });
+
+    ASSERT_TRUE(this->_lessdb.update(TestFixture::TEST_BLOCK_INDEX, 1, 0, 55));
+    ASSERT_TRUE(this->_lessdb.init_data(FactoryResetType::Partial));
+
+    auto read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 0, 0);
+    ASSERT_TRUE(read_opt.has_value());
+    ASSERT_EQ(0, read_opt.value());
+
+    read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 1, 0);
+    ASSERT_TRUE(read_opt.has_value());
+    ASSERT_EQ(55, read_opt.value());
+}
+
+TYPED_TEST(LessDbBackendsTest, ClearInitProvidersRestoresLayoutDefaults)
+{
+    this->_lessdb.register_layout_init_provider(TestFixture::TEST_BLOCK_INDEX,
+                                                3,
+                                                [](const InitRequest&) -> std::optional<uint32_t>
+                                                {
+                                                    return 42;
+                                                });
+
+    ASSERT_TRUE(this->_lessdb.init_data(FactoryResetType::Full));
+
+    auto read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 3, 0);
+    ASSERT_TRUE(read_opt.has_value());
+    ASSERT_EQ(42, read_opt.value());
+
+    this->_lessdb.clear_init_providers();
+    ASSERT_TRUE(this->_lessdb.init_data(FactoryResetType::Full));
+
+    read_opt = this->_lessdb.read(TestFixture::TEST_BLOCK_INDEX, 3, 0);
+    ASSERT_TRUE(read_opt.has_value());
+    ASSERT_EQ(TestFixture::DEFAULT_VALUES[3], read_opt.value());
+}
+
 TYPED_TEST(LessDbBackendsTest, Update)
 {
     uint32_t value;
@@ -1146,7 +1330,7 @@ TYPED_TEST(LessDbBackendsTest, ErrorCheck)
     ASSERT_FALSE(ret);
 
     // Try initializing the database with zero blocks.
-    ret = this->_lessdb.set_layout({}, 0);
+    ret = this->_lessdb.set_layout(std::array<Block, 0>{}, 0);
     ASSERT_FALSE(ret);
 
     // Try initializing the database with a start offset that pushes a valid layout out of bounds.

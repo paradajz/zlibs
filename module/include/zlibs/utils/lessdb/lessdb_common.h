@@ -172,43 +172,18 @@ namespace zlibs::utils::lessdb
          * @param parameter_type            Storage type for each parameter.
          * @param preserve_on_partial_reset Whether to preserve this section during a partial reset.
          * @param auto_increment            Whether to auto-increment the default value per parameter index.
-         * @param default_value             Default value applied to all parameters.
+         * @param default_value             Default value applied to all parameters. Defaults to zero.
          */
         consteval Section(size_t               number_of_parameters,
                           SectionParameterType parameter_type,
                           PreserveSetting      preserve_on_partial_reset,
                           AutoIncrementSetting auto_increment,
-                          uint32_t             default_value)
+                          uint32_t             default_value = 0)
             : _number_of_parameters(number_of_parameters)
             , _parameter_type(parameter_type)
             , _preserve_on_partial_reset(preserve_on_partial_reset)
             , _auto_increment(auto_increment)
             , _default_value(default_value)
-            , _default_values{}
-            , _address(0)
-        {}
-
-        /**
-         * @brief Constructs a section with a per-parameter default value list.
-         *
-         * @param number_of_parameters      Number of parameters in this section.
-         * @param parameter_type            Storage type for each parameter.
-         * @param preserve_on_partial_reset Whether to preserve this section during a partial reset.
-         * @param auto_increment            Whether to auto-increment default values.
-         * @param default_values            Per-parameter defaults; the pointed-to array must outlive
-         *                                  this section (use a static or constexpr array).
-         */
-        consteval Section(size_t                    number_of_parameters,
-                          SectionParameterType      parameter_type,
-                          PreserveSetting           preserve_on_partial_reset,
-                          AutoIncrementSetting      auto_increment,
-                          std::span<const uint32_t> default_values)
-            : _number_of_parameters(number_of_parameters)
-            , _parameter_type(parameter_type)
-            , _preserve_on_partial_reset(preserve_on_partial_reset)
-            , _auto_increment(auto_increment)
-            , _default_value(0)
-            , _default_values(default_values)
             , _address(0)
         {}
 
@@ -242,17 +217,15 @@ namespace zlibs::utils::lessdb
             , _preserve_on_partial_reset(other._preserve_on_partial_reset)
             , _auto_increment(other._auto_increment)
             , _default_value(other._default_value)
-            , _default_values(other._default_values)
             , _address(address)
         {}
 
-        const size_t                    _number_of_parameters;
-        const SectionParameterType      _parameter_type;
-        const PreserveSetting           _preserve_on_partial_reset;
-        const AutoIncrementSetting      _auto_increment;
-        const uint32_t                  _default_value;
-        const std::span<const uint32_t> _default_values;
-        const uint32_t                  _address;
+        const size_t               _number_of_parameters;
+        const SectionParameterType _parameter_type;
+        const PreserveSetting      _preserve_on_partial_reset;
+        const AutoIncrementSetting _auto_increment;
+        const uint32_t             _default_value;
+        const uint32_t             _address;
     };
 
     /**

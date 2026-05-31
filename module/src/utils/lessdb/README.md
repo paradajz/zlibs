@@ -51,7 +51,7 @@ LessDb db(hwa);
 
 // Describe the layout (compile-time)
 static constexpr auto BLOCK = make_block(std::array<Section, 2>{
-    Section{ 8, SectionParameterType::Bit, PreserveSetting::Disable, AutoIncrementSetting::Disable, 0 },
+    Section{ 8, SectionParameterType::Bit, PreserveSetting::Disable, AutoIncrementSetting::Disable },
     Section{ 16, SectionParameterType::Byte, PreserveSetting::Enable, AutoIncrementSetting::Enable, 10 },
 });
 
@@ -67,3 +67,22 @@ db.init_data(FactoryResetType::Full);
 uint32_t value = db.read(0, 1, 3).value_or(0);
 db.update(0, 1, 3, 42);
 ```
+
+Sections use a default value of zero when no explicit default is provided. `AutoIncrementSetting::Enable` increments the section default by parameter index during initialization.
+
+Initialization defaults can also be supplied at runtime for a section:
+
+```cpp
+db.set_layout(LAYOUT);
+db.register_layout_init_provider(0, 1, [](const InitRequest& request) -> std::optional<uint32_t> {
+    if ((request.parameter_index % 2) == 0) {
+        return 100 + request.parameter_index;
+    }
+
+    return std::nullopt;
+});
+
+db.init_data(FactoryResetType::Full);
+```
+
+Providers are scoped to the active layout UID, run during `init_data()`, and may return `std::nullopt` to keep the layout default. Use `clear_init_providers()` to remove registered providers.
