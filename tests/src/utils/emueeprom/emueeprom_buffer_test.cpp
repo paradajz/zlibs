@@ -181,8 +181,115 @@ namespace
     using HwaTest  = HwaTestBase<>;
     using HwaTest8 = HwaTestBase<sizeof(uint64_t)>;
 
-    using EmuEepromTestStorage       = EmuEeprom<PAGE_SIZE, HwaTest::WRITE_BLOCK_SIZE>;
-    using EmuEepromWriteBlockStorage = EmuEeprom<PAGE_SIZE, HwaTest8::WRITE_BLOCK_SIZE>;
+    class HwaLargeFactoryTest : public Hwa
+    {
+        public:
+        static constexpr size_t WRITE_BLOCK_SIZE  = sizeof(uint32_t);
+        static constexpr size_t FACTORY_PAGE_SIZE = PAGE_SIZE * 2;
+
+        bool init() override
+        {
+            return true;
+        }
+
+        bool erase_page(Page page) override
+        {
+            std::fill(page_storage(page).begin(), page_storage(page).end(), 0xFF);
+            return true;
+        }
+
+        bool write(Page page, uint32_t offset, std::span<const uint8_t> data) override
+        {
+            auto storage = page_storage(page);
+
+            if ((data.size() != WRITE_BLOCK_SIZE) ||
+                ((offset % WRITE_BLOCK_SIZE) != 0) ||
+                ((offset + data.size()) > storage.size()))
+            {
+                return false;
+            }
+
+            for (size_t i = 0; i < data.size(); i++)
+            {
+                if ((data[i] | storage[offset + i]) != storage[offset + i])
+                {
+                    return false;
+                }
+            }
+
+            std::copy(data.begin(), data.end(), storage.begin() + offset);
+            return true;
+        }
+
+        bool read(Page page, uint32_t offset, std::span<uint8_t> data) override
+        {
+            auto storage = page_storage(page);
+
+            if ((data.empty()) ||
+                ((data.size() % WRITE_BLOCK_SIZE) != 0) ||
+                ((offset % WRITE_BLOCK_SIZE) != 0) ||
+                ((offset + data.size()) > storage.size()))
+            {
+                return false;
+            }
+
+            std::copy(storage.begin() + offset, storage.begin() + offset + data.size(), data.begin());
+            return true;
+        }
+
+        void erase_raw_page(Page page)
+        {
+            std::fill(page_storage(page).begin(), page_storage(page).end(), 0xFF);
+        }
+
+        uint8_t raw_read_byte(Page page, uint32_t offset) const
+        {
+            return page_storage(page)[offset];
+        }
+
+        private:
+        std::span<uint8_t> page_storage(Page page)
+        {
+            switch (page)
+            {
+            case Page::Page1:
+                return _page1;
+
+            case Page::Page2:
+                return _page2;
+
+            case Page::Factory:
+                return _factory;
+            }
+
+            return _page1;
+        }
+
+        std::span<const uint8_t> page_storage(Page page) const
+        {
+            switch (page)
+            {
+            case Page::Page1:
+                return _page1;
+
+            case Page::Page2:
+                return _page2;
+
+            case Page::Factory:
+                return _factory;
+            }
+
+            return _page1;
+        }
+
+        std::array<uint8_t, PAGE_SIZE>         _page1   = {};
+        std::array<uint8_t, PAGE_SIZE>         _page2   = {};
+        std::array<uint8_t, FACTORY_PAGE_SIZE> _factory = {};
+    };
+
+    using EmuEepromTestStorage         = EmuEeprom<PAGE_SIZE, HwaTest::WRITE_BLOCK_SIZE>;
+    using EmuEepromWriteBlockStorage   = EmuEeprom<PAGE_SIZE, HwaTest8::WRITE_BLOCK_SIZE>;
+    using EmuEepromLargeFactoryStorage = EmuEeprom<PAGE_SIZE, HwaLargeFactoryTest::WRITE_BLOCK_SIZE>;
 
     class EmuEepromTest : public ::testing::Test
     {
@@ -243,6 +350,21 @@ namespace
 
         HwaTest8                   _hwa;
         EmuEepromWriteBlockStorage _emu_eeprom = EmuEepromWriteBlockStorage(_hwa);
+    };
+
+    class EmuEepromLargeFactoryTest : public ::testing::Test
+    {
+        protected:
+        void SetUp() override
+        {
+            _hwa.erase_raw_page(Page::Page1);
+            _hwa.erase_raw_page(Page::Page2);
+            _hwa.erase_raw_page(Page::Factory);
+            ASSERT_TRUE(_emu_eeprom.init());
+        }
+
+        HwaLargeFactoryTest          _hwa;
+        EmuEepromLargeFactoryStorage _emu_eeprom = EmuEepromLargeFactoryStorage(_hwa);
     };
 
 }    // namespace
@@ -396,6 +518,35 @@ TEST_F(EmuEepromWriteBlockTest, PageTransferFlushesPendingBlockBeforeSwitchingPa
     ASSERT_TRUE(_emu_eeprom.init());
     ASSERT_EQ(ReadStatus::Ok, _emu_eeprom.read(0, value));
     ASSERT_EQ(1, value);
+}
+
+TEST_F(EmuEepromLargeFactoryTest, StoreAndRestoreFactorySnapshotWorkWhenFactoryPageIsLarger)
+{
+    uint16_t value = 0;
+
+    ASSERT_EQ(WriteStatus::Ok, _emu_eeprom.write(make_entry(0, 0x1111)));
+    ASSERT_EQ(WriteStatus::Ok, _emu_eeprom.write(make_entry(1, 0x2222)));
+    ASSERT_TRUE(_emu_eeprom.store_to_factory());
+
+    ASSERT_TRUE(_emu_eeprom.format());
+    ASSERT_EQ(ReadStatus::NoVariable, _emu_eeprom.read(0, value));
+
+    ASSERT_TRUE(_emu_eeprom.restore_from_factory());
+    ASSERT_EQ(ReadStatus::Ok, _emu_eeprom.read(0, value));
+    ASSERT_EQ(0x1111, value);
+    ASSERT_EQ(ReadStatus::Ok, _emu_eeprom.read(1, value));
+    ASSERT_EQ(0x2222, value);
+}
+
+TEST_F(EmuEepromLargeFactoryTest, StoreToFactoryLeavesBytesBeyondRuntimePageUntouched)
+{
+    ASSERT_EQ(WriteStatus::Ok, _emu_eeprom.write(make_entry(0, 0x1111)));
+    ASSERT_TRUE(_emu_eeprom.store_to_factory());
+
+    for (uint32_t offset = PAGE_SIZE; offset < HwaLargeFactoryTest::FACTORY_PAGE_SIZE; offset++)
+    {
+        ASSERT_EQ(0xFF, _hwa.raw_read_byte(Page::Factory, offset));
+    }
 }
 
 TEST_F(EmuEepromTest, Insert)
