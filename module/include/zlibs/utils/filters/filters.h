@@ -21,28 +21,55 @@ namespace zlibs::utils::filters
     /**
      * @brief Exponential moving average filter.
      *
-     * @tparam T Numeric sample type.
-     * @tparam Percentage Smoothing percentage in range `[0, 100]`.
+     * @tparam T Integral sample type.
      */
-    template<std::unsigned_integral T, uint32_t Percentage>
+    template<std::integral T>
     class EmaFilter
     {
         public:
         static constexpr uint32_t PERCENTAGE_SCALE = 100;
-        static_assert(Percentage <= PERCENTAGE_SCALE, "EMA percentage must be in range [0, 100].");
 
         EmaFilter() = default;
+
+        /**
+         * @brief Creates a filter with an initial output value.
+         *
+         * @param value Initial filtered value.
+         */
+        explicit EmaFilter(T value)
+            : _current_value(value)
+        {}
 
         /**
          * @brief Feeds one sample and returns filtered value.
          *
          * @param raw Raw sample.
+         * @param percentage Smoothing percentage in range `[0, 100]`.
          *
          * @return Filtered output value.
          */
-        T value(T raw)
+        T value(T raw, uint32_t percentage)
         {
-            _current_value = (PERCENTAGE * static_cast<uint32_t>(raw) + (PERCENTAGE_SCALE - PERCENTAGE) * static_cast<uint32_t>(_current_value)) / PERCENTAGE_SCALE;
+            if (percentage > PERCENTAGE_SCALE)
+            {
+                _current_value = raw;
+                return _current_value;
+            }
+
+            _current_value = static_cast<T>(((static_cast<int64_t>(percentage) * raw) +
+                                             (static_cast<int64_t>(PERCENTAGE_SCALE - percentage) * _current_value)) /
+                                            PERCENTAGE_SCALE);
+
+            return _current_value;
+        }
+
+        /**
+         * @brief Returns current filtered value.
+         *
+         * @return Current filter output.
+         */
+        T value() const
+        {
             return _current_value;
         }
 
@@ -54,9 +81,18 @@ namespace zlibs::utils::filters
             _current_value = 0;
         }
 
+        /**
+         * @brief Resets filter internal state to a specific output value.
+         *
+         * @param value New filtered value.
+         */
+        void reset(T value)
+        {
+            _current_value = value;
+        }
+
         private:
-        static constexpr uint32_t PERCENTAGE     = Percentage;
-        T                         _current_value = 0;
+        T _current_value = 0;
     };
 
     /**
@@ -221,7 +257,7 @@ namespace zlibs::utils::filters
                 return {};
             }
 
-            auto ema = _ema_filter.at(index).value(median.value());
+            auto ema = _ema_filter.at(index).value(median.value(), Config::EMA_FILTER_SMOOTHING_PERCENTAGE);
 
             if (_last_stable_filtered_value.at(index) != ema)
             {
@@ -268,7 +304,7 @@ namespace zlibs::utils::filters
 
         private:
         /** @brief EMA filter type instantiated from the provided static config. */
-        using EmaFilterType = EmaFilter<uint16_t, Config::EMA_FILTER_SMOOTHING_PERCENTAGE>;
+        using EmaFilterType = EmaFilter<uint16_t>;
 
         /** @brief Median filter type instantiated from the provided static config. */
         using MedianFilterType = MedianFilter<uint16_t, Config::MEDIAN_FILTER_NUMBER_OF_READINGS>;

@@ -45,8 +45,8 @@ using namespace zlibs::utils::filters;
 
 constexpr uint32_t EMA_SMOOTHING_PERCENTAGE = 50;
 
-EmaFilter<uint16_t, EMA_SMOOTHING_PERCENTAGE> filter;
-uint16_t smoothed = filter.value(100);
+EmaFilter<uint16_t> filter;
+uint16_t smoothed = filter.value(100, EMA_SMOOTHING_PERCENTAGE);
 ```
 
 #### Median filter

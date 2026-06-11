@@ -78,14 +78,45 @@ class FiltersTest : public Test
 
 TEST_F(FiltersTest, EmaFilterAppliesConfiguredSmoothingAndReset)
 {
-    EmaFilter<uint16_t, 50> filter = {};
+    EmaFilter<uint16_t> filter = {};
 
-    ASSERT_EQ(50, filter.value(100));
-    ASSERT_EQ(75, filter.value(100));
+    ASSERT_EQ(50, filter.value(100, 50));
+    ASSERT_EQ(75, filter.value(100, 50));
+    ASSERT_EQ(75, filter.value());
 
     filter.reset();
 
-    ASSERT_EQ(25, filter.value(50));
+    ASSERT_EQ(25, filter.value(50, 50));
+}
+
+TEST_F(FiltersTest, EmaFilterCanBePrimedWithInitialValue)
+{
+    EmaFilter<uint16_t> filter(100);
+
+    ASSERT_EQ(100, filter.value(100, 50));
+    ASSERT_EQ(150, filter.value(200, 50));
+
+    filter.reset(60);
+
+    ASSERT_EQ(80, filter.value(100, 50));
+}
+
+TEST_F(FiltersTest, EmaFilterSupportsRuntimePercentageAndSignedValues)
+{
+    EmaFilter<int16_t> filter(-100);
+
+    ASSERT_EQ(-80, filter.value(100, 10));
+    ASSERT_EQ(10, filter.value(100, 50));
+    ASSERT_EQ(100, filter.value(100, 100));
+}
+
+TEST_F(FiltersTest, EmaFilterReturnsRawValueWhenRuntimePercentageIsInvalid)
+{
+    EmaFilter<uint16_t> filter(100);
+
+    ASSERT_EQ(200, filter.value(200, 101));
+    ASSERT_EQ(200, filter.value());
+    ASSERT_EQ(250, filter.value(300, 50));
 }
 
 TEST_F(FiltersTest, MedianFilterReturnsStableValueOnceWindowIsFull)
