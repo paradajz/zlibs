@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.28.0)
 list(APPEND CONF_FILE "${CMAKE_CURRENT_LIST_DIR}/prj.conf")
 include($ENV{ZEPHYR_WS}/zenv/cmake/test.cmake)
 
